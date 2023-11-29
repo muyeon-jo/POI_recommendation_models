@@ -12,7 +12,6 @@ from model import NAIS_basic, NAIS_regionEmbedding,NAIS_region_distance_Embeddin
 import time
 import random
 import math
-import multiprocessing as mp
 if torch.cuda.is_available():
     import torch.cuda as T
 else:
@@ -78,7 +77,7 @@ def train_NAIS(train_matrix, test_positive, test_negative, dataset):
 
         for buid in idx:
             user_history, train_data, train_label = get_NAIS_batch(train_matrix,test_negative,num_items,buid,args.num_ng)
-            optimizer.zero_grad() # 그래디언트 초기화
+            model.zero_grad() # 그래디언트 초기화
             prediction = model(user_history, train_data)
             # print(train_label)
             # print(prediction)
@@ -109,24 +108,11 @@ def train_NAIS(train_matrix, test_positive, test_negative, dataset):
                 _, indices = torch.topk(prediction, args.topk)
                 recommended_list_g.append([target_list[i] for i in indices])
 
-            precision, recall, hit = [], [], []
-            precision_g, recall_g, hit_g = [], [], []
-            for k in [5, 10, 15, 20, 25, 30]:
-                precision.append(eval_metrics.precision_at_k(test_positive, recommended_list, k))
-                recall.append(eval_metrics.recall_at_k(test_positive, recommended_list, k))
-                hit.append(eval_metrics.hitrate_at_k(test_positive, recommended_list, k))
-                precision_g.append(eval_metrics.precision_at_k(test_positive, recommended_list_g, k))
-                recall_g.append(eval_metrics.recall_at_k(test_positive, recommended_list_g, k))
-                hit_g.append(eval_metrics.hitrate_at_k(test_positive, recommended_list_g, k))
-            print(precision)
-            print(recall)
-            print(hit)
+            k_list=[5, 10, 15, 20,25,30]
+            precision, recall, hit = eval_metrics.evaluate_mp(test_positive,recommended_list,k_list)
+            precision_g, recall_g, hit_g = eval_metrics.evaluate_mp(test_positive,recommended_list_g,k_list)
 
-            print(precision_g)
-            print(recall_g)
-            print(hit_g)
-
-    return recall , prec, hit
+    return recall , precision, hit
 def train_NAIS_region(train_matrix, test_positive, test_negative, dataset):
     args = Args()
     num_users = dataset.user_num
@@ -154,7 +140,7 @@ def train_NAIS_region(train_matrix, test_positive, test_negative, dataset):
         random.shuffle(idx)
         for buid in idx:
             user_history , train_data, train_label, user_history_region, train_data_region = get_NAIS_batch_region(train_matrix, test_negative, num_items, buid, args.num_ng, businessRegionEmbedList)
-            optimizer.zero_grad() # 그래디언트 초기화
+            model.zero_grad() # 그래디언트 초기화
             prediction = model(user_history, train_data, user_history_region, train_data_region)
             #if buid == 0:
             #    print(f"prediction : {prediction.shape}, {prediction}")
@@ -185,24 +171,12 @@ def train_NAIS_region(train_matrix, test_positive, test_negative, dataset):
                 _, indices = torch.topk(prediction, args.topk)
                 recommended_list_g.append([target_list[i] for i in indices])
 
-            precision, recall, hit = [], [], []
-            precision_g, recall_g, hit_g = [], [], []
-            for k in [5, 10, 15, 20, 25, 30]:
-                precision.append(eval_metrics.precision_at_k(test_positive, recommended_list, k))
-                recall.append(eval_metrics.recall_at_k(test_positive, recommended_list, k))
-                hit.append(eval_metrics.hitrate_at_k(test_positive, recommended_list, k))
-                precision_g.append(eval_metrics.precision_at_k(test_positive, recommended_list_g, k))
-                recall_g.append(eval_metrics.recall_at_k(test_positive, recommended_list_g, k))
-                hit_g.append(eval_metrics.hitrate_at_k(test_positive, recommended_list_g, k))
-            print(f"precision:{precision}")
-            print(f"recall{recall}")
-            print(f"hit{hit}")
+            k_list=[5, 10, 15, 20,25,30]
+            precision, recall, hit = eval_metrics.evaluate_mp(test_positive,recommended_list,k_list)
+            precision_g, recall_g, hit_g = eval_metrics.evaluate_mp(test_positive,recommended_list_g,k_list)
+            
 
-            print(f"precision_g : {precision_g}")
-            print(f"recall_g : {recall_g}")
-            print(f"hit_g : {hit_g}")
-
-    return recall , prec, hit
+    return recall , precision, hit
 def train_NAIS_region_distance(train_matrix, test_positive, test_negative, dataset):
     args = Args()
     num_users = dataset.user_num
@@ -243,7 +217,7 @@ def train_NAIS_region_distance(train_matrix, test_positive, test_negative, datas
                 avg /= len(history_pois)
                 target_dist.append(avg)
             target_dist=torch.tensor(target_dist,dtype=torch.float32).to(DEVICE)
-            optimizer.zero_grad() # 그래디언트 초기화
+            model.zero_grad() # 그래디언트 초기화
             prediction = model(user_history, train_data, user_history_region, train_data_region, target_dist)
             loss = model.loss_func(prediction,train_label)
             train_loss += loss.item()
@@ -280,40 +254,16 @@ def train_NAIS_region_distance(train_matrix, test_positive, test_negative, datas
 
                 _, indices = torch.topk(prediction, args.topk)
                 recommended_list_g.append([target_list[i] for i in indices])
+            k_list=[5, 10, 15, 20,25,30]
+            precision, recall, hit = eval_metrics.evaluate_mp(test_positive,recommended_list,k_list)
+            precision_g, recall_g, hit_g = eval_metrics.evaluate_mp(test_positive,recommended_list_g,k_list)
+            
 
-            precision, recall, hit = [], [], []
-            precision_g, recall_g, hit_g = [], [], []
-            for k in [5, 10, 15, 20, 25, 30]:
-                precision.append(eval_metrics.precision_at_k(test_positive, recommended_list, k))
-                recall.append(eval_metrics.recall_at_k(test_positive, recommended_list, k))
-                hit.append(eval_metrics.hitrate_at_k(test_positive, recommended_list, k))
-                precision_g.append(eval_metrics.precision_at_k(test_positive, recommended_list_g, k))
-                recall_g.append(eval_metrics.recall_at_k(test_positive, recommended_list_g, k))
-                hit_g.append(eval_metrics.hitrate_at_k(test_positive, recommended_list_g, k))
-            print(f"precision:{precision}")
-            print(f"recall{recall}")
-            print(f"hit{hit}")
-
-            print(f"precision_g : {precision_g}")
-            print(f"recall_g : {recall_g}")
-            print(f"hit_g : {hit_g}")
-
-            #return recall , prec, hit
+            return recall , precision, hit
 def train_BPR(train_matrix, test_positive, test_negative,  dataset):
     args = Args()
     num_users = dataset.user_num
     num_items = dataset.poi_num
-    ############################## PREPARE DATASET ##########################
-
-
-    # construct the train and test datasets
-    # 훈련 및 테스트 데이터셋 생성
-    # train_dataset = BPRData(train_matrix ,num_items, args.num_ng, True, test_negative)
-
-    # DataLoader로 배치 처리를 위한 데이터 로더 생성
-    # train_loader = torch.utils.data.DataLoader(train_dataset,
-    #         batch_size=args.batch_size, shuffle=True, num_workers=1)  # num_workers를 0으로 변경하여 CPU에서 처리, 기존 코드는 GPU를 사용
-
     ########################### CREATE MODEL #################################
     # BPR 모델 생성
     model = BPR(num_users, num_items, args.factor_num).to(DEVICE)
@@ -355,9 +305,9 @@ def train_BPR(train_matrix, test_positive, test_negative,  dataset):
         print(lo)
         print(f"Epoch : {epoch}, Used_Time : {elapsed_time}")
 
-        if epoch%10==0:
+        if epoch % 50==0:
             model.eval() # 모델을 평가 모드로 설정
-            k=[10,20,30,40,50]
+            k_list=[5, 10, 15, 20,25,30]
             alpha = args.powerlaw_weight
             recommended_list = []
             recommended_list_g = []
@@ -378,35 +328,10 @@ def train_BPR(train_matrix, test_positive, test_negative,  dataset):
                 _, indices = torch.topk(prediction, args.topk)
                 recommended_list_g.append([target_list[i] for i in indices])
 
-            precision, recall, hit = [], [], []
-            precision_g, recall_g, hit_g = [], [], []
-            for k in [5, 10, 15, 20,25,30]:
-                precision.append(eval_metrics.precision_at_k(test_positive, recommended_list, k))
-                recall.append(eval_metrics.recall_at_k(test_positive, recommended_list, k))
-                hit.append(eval_metrics.hitrate_at_k(test_positive, recommended_list, k))
-                precision_g.append(eval_metrics.precision_at_k(test_positive, recommended_list_g, k))
-                recall_g.append(eval_metrics.recall_at_k(test_positive, recommended_list_g, k))
-                hit_g.append(eval_metrics.hitrate_at_k(test_positive, recommended_list_g, k))
-            print("no distance")
-            print(precision)
-            print(recall)
-            print(hit)
-            print("")
 
-            print("with distance")
-            print(precision_g)
-            print(recall_g)
-            print(hit)
-def evaluate(positive_list, recommended_list, k_list):
-    precision, recall, hit = [], [], []
-    for k in k_list:
-        precision.append(eval_metrics.precision_at_k(positive_list, recommended_list, k))
-        recall.append(eval_metrics.recall_at_k(positive_list, recommended_list, k))
-        hit.append(eval_metrics.hitrate_at_k(positive_list, recommended_list, k))
-    print(precision)
-    print(recall)
-    print(hit)
-    return precision,recall,hit
+            precision, recall, hit = eval_metrics.evaluate_mp(test_positive,recommended_list,k_list)
+            precision_g, recall_g, hit_g = eval_metrics.evaluate_mp(test_positive,recommended_list_g,k_list)
+
 def main():
     dataset_ = datasets.Foursquare()
     train_matrix,  test_positive, test_negative, place_coords = dataset_.generate_data(0)
@@ -416,7 +341,6 @@ def main():
 
     G.fit_distance_distribution(train_matrix, place_coords)
     train_NAIS(train_matrix, test_positive, test_negative, dataset_)
-
 
 
 if __name__ == '__main__':

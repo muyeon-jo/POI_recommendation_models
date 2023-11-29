@@ -238,12 +238,12 @@ class Foursquare(object):
             place_list = raw_matrix.getrow(user_id).indices
             freq_list = raw_matrix.getrow(user_id).data
             time_list = time_matrix.getrow(user_id).data
-            # train_place, test_place, train_freq, test_freq = train_test_split(place_list, freq_list, test_size=test_size, random_state=random_seed)
-            train_place, test_place, train_freq, test_freq = train_test_split_with_time(place_list, freq_list, time_list, test_size)
+            train_place, test_place, train_freq, test_freq = train_test_split(place_list, freq_list, test_size=test_size, random_state=random_seed)
+            # train_place, test_place, train_freq, test_freq = train_test_split_with_time(place_list, freq_list, time_list, test_size)
 
             for i in range(len(train_place)):
                 train_matrix[user_id, train_place[i]] = train_freq[i]
-            test_positive.append(test_place)
+            test_positive.append(test_place.tolist())
 
             negative = list(set(pois) - set(raw_matrix.getrow(user_id).indices))
             random.shuffle(negative)

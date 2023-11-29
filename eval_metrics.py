@@ -1,6 +1,7 @@
 import numpy as np
 import multiprocessing as mp
 def evaluate_mp(positive_list, recommended_list, k_list):
+    print("--eval--")
     # 입력 값 리스트 생성
     input_list = []
     for i in range(len(k_list)):
@@ -10,16 +11,20 @@ def evaluate_mp(positive_list, recommended_list, k_list):
     precision = pool.starmap(precision_at_k, input_list)
     pool.close()
     pool.join()
+    print(precision)
 
     pool = mp.Pool(processes=len(k_list))
     recall = pool.starmap(recall_at_k, input_list)
     pool.close()
     pool.join()
+    print(recall)
 
     pool = mp.Pool(processes=len(k_list))
     hit = pool.starmap(hitrate_at_k, input_list)
     pool.close()
     pool.join()
+    print(hit)
+    print("--------")
     return precision,recall,hit
 
 def precision_at_k_per_sample(actual, predicted, topk):
