@@ -1,7 +1,6 @@
 import numpy as np
 import multiprocessing as mp
 def evaluate_mp(positive_list, recommended_list, k_list):
-    print("--eval--")
     # 입력 값 리스트 생성
     input_list = []
     for i in range(len(k_list)):

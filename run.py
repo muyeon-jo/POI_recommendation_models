@@ -5,13 +5,12 @@ import eval_metrics
 import datasets
 from batches import get_NAIS_batch_test_region,get_NAIS_batch_region,get_NAIS_batch_test,get_NAIS_batch,get_BPR_batch
 import torch
-import torch.nn as nn
-from torch.autograd import Variable
 from powerLaw import PowerLaw, dist
 from model import NAIS_basic, NAIS_regionEmbedding,NAIS_region_distance_Embedding,BPR
 import time
 import random
 import math
+import multiprocessing as mp
 if torch.cuda.is_available():
     import torch.cuda as T
 else:
@@ -46,6 +45,7 @@ class Args:
         self.epochs = 150 # training epoches
         self.topk = 50 # compute metrics@top_k
         self.factor_num = 16 # predictive factors numbers in the model
+        self.region_embed_size=152
         self.num_ng = 4 # sample negative items for training
         self.out = True # save model or not
         self.beta = 0.5
@@ -88,26 +88,28 @@ def train_NAIS(train_matrix, test_positive, test_negative, dataset):
         end_time = int(time.time())
         print("Train Epoch: {}; time: {} sec; loss: {:.4f}".format(e+1, end_time-start_time,train_loss))
         
-        if e%10==0:
+        if e%30==0:
             model.eval() # 모델을 평가 모드로 설정
             alpha = args.powerlaw_weight
             recommended_list = []
             recommended_list_g = []
+            start_time = int(time.time())
             for user_id in range(num_users):
                 user_history, target_list, train_label = get_NAIS_batch_test(train_matrix,test_positive,test_negative,user_id)
 
                 prediction = model(user_history, target_list)
 
                 _, indices = torch.topk(prediction, args.topk)
-                recommended_list.append([target_list[i] for i in indices])
+                recommended_list.append([target_list[i].item() for i in indices])
 
                 G_score = normalize([G.predict(user_id,poi_id) for poi_id in target_list])
                 G_score = torch.tensor(np.array(G_score)).to(DEVICE)
                 prediction = (1-alpha)*prediction + alpha * G_score
 
                 _, indices = torch.topk(prediction, args.topk)
-                recommended_list_g.append([target_list[i] for i in indices])
-
+                recommended_list_g.append([target_list[i].item() for i in indices])
+            end_time = int(time.time())
+            print("time: {}".format(end_time-start_time))
             k_list=[5, 10, 15, 20,25,30]
             precision, recall, hit = eval_metrics.evaluate_mp(test_positive,recommended_list,k_list)
             precision_g, recall_g, hit_g = eval_metrics.evaluate_mp(test_positive,recommended_list_g,k_list)
@@ -156,21 +158,23 @@ def train_NAIS_region(train_matrix, test_positive, test_negative, dataset):
             alpha = args.powerlaw_weight
             recommended_list = []
             recommended_list_g = []
+            start_time = time.time()
             for user_id in range(num_users):
                 user_history, target_list, train_label, user_history_region, train_data_region = get_NAIS_batch_test_region(train_matrix,test_positive,test_negative,user_id, businessRegionEmbedList)
 
                 prediction = model(user_history, target_list, user_history_region, train_data_region)
 
                 _, indices = torch.topk(prediction, args.topk)
-                recommended_list.append([target_list[i] for i in indices])
+                recommended_list.append([target_list[i].item() for i in indices])
 
                 G_score = normalize([G.predict(user_id,poi_id) for poi_id in target_list])
                 G_score = torch.tensor(np.array(G_score)).to(DEVICE)
                 prediction = (1-alpha)*prediction + alpha * G_score
 
                 _, indices = torch.topk(prediction, args.topk)
-                recommended_list_g.append([target_list[i] for i in indices])
-
+                recommended_list_g.append([target_list[i].item() for i in indices])
+            end_time = int(time.time())
+            print("time: {}".format(end_time-start_time))
             k_list=[5, 10, 15, 20,25,30]
             precision, recall, hit = eval_metrics.evaluate_mp(test_positive,recommended_list,k_list)
             precision_g, recall_g, hit_g = eval_metrics.evaluate_mp(test_positive,recommended_list_g,k_list)
@@ -187,7 +191,6 @@ def train_NAIS_region_distance(train_matrix, test_positive, test_negative, datas
         # 모든 행을 읽어와서 첫 번째 열만 리스트로 변환
         businessRegionEmbedList = [int(line.split('\t')[1].strip()) for line in file.readlines()]
 
-    #model = NAIS_basic(num_items, args.factor_num, 0.8)
     model = NAIS_region_distance_Embedding(num_items, args.factor_num, args.factor_num*2, args.beta, args.region_embed_size, region_num).to(DEVICE)
 
     # 옵티마이저 생성 (adagrad 사용)
@@ -231,6 +234,7 @@ def train_NAIS_region_distance(train_matrix, test_positive, test_negative, datas
             alpha = args.powerlaw_weight
             recommended_list = []
             recommended_list_g = []
+            start_time = time.time()
             for user_id in range(num_users):
                 user_history, target_list, train_label, user_history_region, train_data_region = get_NAIS_batch_test_region(train_matrix,test_positive,test_negative,user_id, businessRegionEmbedList)        
                 history_pois = [(poi_coos[i][0], poi_coos[i][1]) for i in user_history[0]] # 방문한 데이터
@@ -246,20 +250,23 @@ def train_NAIS_region_distance(train_matrix, test_positive, test_negative, datas
                 prediction = model(user_history, target_list, user_history_region, train_data_region, target_dist)
 
                 _, indices = torch.topk(prediction, args.topk)
-                recommended_list.append([target_list[i] for i in indices])
+                recommended_list.append([target_list[i].item() for i in indices])
 
                 G_score = normalize([G.predict(user_id,poi_id) for poi_id in target_list])
                 G_score = torch.tensor(np.array(G_score)).to(DEVICE)
                 prediction = (1-alpha)*prediction + alpha * G_score
 
                 _, indices = torch.topk(prediction, args.topk)
-                recommended_list_g.append([target_list[i] for i in indices])
+                recommended_list_g.append([target_list[i].item() for i in indices])
+            end_time = int(time.time())
+            print("time: {}".format(end_time-start_time))
             k_list=[5, 10, 15, 20,25,30]
             precision, recall, hit = eval_metrics.evaluate_mp(test_positive,recommended_list,k_list)
             precision_g, recall_g, hit_g = eval_metrics.evaluate_mp(test_positive,recommended_list_g,k_list)
             
 
-            return recall , precision, hit
+    return recall , precision, hit
+
 def train_BPR(train_matrix, test_positive, test_negative,  dataset):
     args = Args()
     num_users = dataset.user_num
@@ -276,9 +283,7 @@ def train_BPR(train_matrix, test_positive, test_negative,  dataset):
     print("start")
     for epoch in range(args.epochs):
         model.train()  # 모델을 학습 모드로 설정
-        start_time = time.time() # 시작시간 기록
-        num = 0
-            
+        start_time = time.time() # 시작시간 기록            
         # train_loader.dataset.ng_sample() # negative 예제 샘플링
         idx = np.arange(num_users).tolist()
         random.shuffle(idx)
@@ -305,10 +310,11 @@ def train_BPR(train_matrix, test_positive, test_negative,  dataset):
         print(lo)
         print(f"Epoch : {epoch}, Used_Time : {elapsed_time}")
 
-        if epoch % 50==0:
+        if epoch % 20==0:
             model.eval() # 모델을 평가 모드로 설정
             k_list=[5, 10, 15, 20,25,30]
             alpha = args.powerlaw_weight
+
             recommended_list = []
             recommended_list_g = []
             for user_id in range(num_users):
@@ -332,15 +338,28 @@ def train_BPR(train_matrix, test_positive, test_negative,  dataset):
             precision, recall, hit = eval_metrics.evaluate_mp(test_positive,recommended_list,k_list)
             precision_g, recall_g, hit_g = eval_metrics.evaluate_mp(test_positive,recommended_list_g,k_list)
 
+def get_bpr_test_input_mp(start_uid,end_uid,test_negative,test_positive):
+    DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    user_tensor_list = []
+    target_tensor_list = []
+    for user_id in range(start_uid,end_uid):
+        user_tensor = torch.LongTensor([user_id] * (len(test_negative[user_id])+len(test_positive[user_id])))
+        target_list = test_negative[user_id]+test_positive[user_id]
+        target_tensor = torch.LongTensor(target_list)
+        user_tensor_list.append(user_tensor)
+        target_tensor_list.append(target_tensor)
+
+    return (user_tensor_list,target_tensor_list)
+        
 def main():
-    dataset_ = datasets.Foursquare()
+    dataset_ = datasets.Yelp()
     train_matrix,  test_positive, test_negative, place_coords = dataset_.generate_data(0)
     # datasets.get_region(place_coords,200,dataset_.directory_path)
     # datasets.get_region_num(dataset_.directory_path)
     print("data generated")
 
     G.fit_distance_distribution(train_matrix, place_coords)
-    train_NAIS(train_matrix, test_positive, test_negative, dataset_)
+    train_BPR(train_matrix, test_positive, test_negative, dataset_)
 
 
 if __name__ == '__main__':

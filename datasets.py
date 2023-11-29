@@ -143,13 +143,13 @@ def get_region_num(path):
     return ma[1]+1
 class Yelp(object):
     def __init__(self):
-        # self.user_num = 15359
-        self.user_num = 500
+        self.user_num = 15359
+        # self.user_num = 500
         self.poi_num = 14586
         self.directory_path = './data/Yelp/'
         self.poi_file = 'Yelp_poi_coos.txt'
-        # self.checkin_file = 'Yelp_checkins.txt'
-        self.checkin_file = 'sample.txt'
+        self.checkin_file = 'Yelp_checkins.txt'
+        # self.checkin_file = 'sample.txt'
     def read_raw_data(self):
         all_data = open(self.directory_path + self.checkin_file, 'r').readlines()
         sparse_raw_matrix = sparse.dok_matrix((self.user_num, self.poi_num))
