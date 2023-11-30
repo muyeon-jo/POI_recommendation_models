@@ -63,10 +63,6 @@ def train_NAIS(train_matrix, test_positive, test_negative, dataset):
     # 옵티마이저 생성 (adagrad 사용)
     optimizer = torch.optim.Adagrad(model.parameters(), lr=args.lr, weight_decay=args.lamda)
 
-    recall = []
-    prec = []
-    hit = []
-
     for e in range(args.epochs):
         model.train()
         train_loss = 0.0
@@ -94,20 +90,46 @@ def train_NAIS(train_matrix, test_positive, test_negative, dataset):
             recommended_list = []
             recommended_list_g = []
             start_time = int(time.time())
+
+            input_list = []
+            for i in range(5):
+                input_list.append((G,train_matrix,test_positive,test_negative,int(num_users*(i*0.2)),int(num_users*((i+1)*0.2))))
+
+            pool = mp.Pool(processes=5)
+            re = pool.starmap(G_score_mp, input_list)
+            
+            pool.close()
+            pool.join()
+            user_history=[]
+            target_list=[]
+            G_score=[]
+            for i in range(5):
+                user_history = user_history + re[i][0]
+                target_list = target_list + re[i][1]
+                G_score = G_score + re[i][2]
+
             for user_id in range(num_users):
-                user_history, target_list, train_label = get_NAIS_batch_test(train_matrix,test_positive,test_negative,user_id)
+                prediction = model(user_history[user_id].to(DEVICE), target_list[user_id].to(DEVICE))
+                _, indices = torch.topk(prediction, args.topk)
+                recommended_list.append([target_list[user_id][i].item() for i in indices])
 
-                prediction = model(user_history, target_list)
+                prediction = (1-alpha)*prediction + alpha * G_score[user_id].to(DEVICE)
 
                 _, indices = torch.topk(prediction, args.topk)
-                recommended_list.append([target_list[i].item() for i in indices])
+                recommended_list_g.append([target_list[user_id][i].item() for i in indices])
 
-                G_score = normalize([G.predict(user_id,poi_id) for poi_id in target_list])
-                G_score = torch.tensor(np.array(G_score)).to(DEVICE)
-                prediction = (1-alpha)*prediction + alpha * G_score
+                # user_history, target_list, train_label = get_NAIS_batch_test(train_matrix,test_positive,test_negative,user_id)
+                # prediction = model(user_history, target_list)
 
-                _, indices = torch.topk(prediction, args.topk)
-                recommended_list_g.append([target_list[i].item() for i in indices])
+                # _, indices = torch.topk(prediction, args.topk)
+                # recommended_list.append([target_list[i].item() for i in indices])
+
+                # G_score = normalize([G.predict(user_id,poi_id) for poi_id in target_list])
+                # G_score = torch.tensor(np.array(G_score)).to(DEVICE)
+                # prediction = (1-alpha)*prediction + alpha * G_score
+
+                # _, indices = torch.topk(prediction, args.topk)
+                # recommended_list_g.append([target_list[i].item() for i in indices])
             end_time = int(time.time())
             print("time: {}".format(end_time-start_time))
             k_list=[5, 10, 15, 20,25,30]
@@ -115,6 +137,7 @@ def train_NAIS(train_matrix, test_positive, test_negative, dataset):
             precision_g, recall_g, hit_g = eval_metrics.evaluate_mp(test_positive,recommended_list_g,k_list)
 
     return recall , precision, hit
+
 def train_NAIS_region(train_matrix, test_positive, test_negative, dataset):
     args = Args()
     num_users = dataset.user_num
@@ -351,6 +374,18 @@ def get_bpr_test_input_mp(start_uid,end_uid,test_negative,test_positive):
 
     return (user_tensor_list,target_tensor_list)
         
+def G_score_mp(G,train_matrix, test_positive, test_negative, user_id_min,user_id_max):
+    user_histories=[]
+    target_lists=[]
+    G_scores=[]
+    for uid in range(user_id_min,user_id_max):
+        user_history, target_list, _ = get_NAIS_batch_test(train_matrix,test_positive,test_negative,uid)
+        G_score = normalize([G.predict(uid,poi_id) for poi_id in target_list])
+        G_score = torch.tensor(np.array(G_score))
+        user_histories.append(user_history)
+        target_lists.append(target_list)
+        G_scores.append(G_score)
+    return (user_histories,target_lists,G_scores)
 def main():
     dataset_ = datasets.Yelp()
     train_matrix,  test_positive, test_negative, place_coords = dataset_.generate_data(0)
@@ -359,7 +394,7 @@ def main():
     print("data generated")
 
     G.fit_distance_distribution(train_matrix, place_coords)
-    train_BPR(train_matrix, test_positive, test_negative, dataset_)
+    train_NAIS(train_matrix, test_positive, test_negative, dataset_)
 
 
 if __name__ == '__main__':
