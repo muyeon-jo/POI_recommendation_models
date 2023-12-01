@@ -261,6 +261,115 @@ class NAIS_region_distance_Embedding(nn.Module):
 
     def attention_network(self, user_history, target_item, history_region, target_region, target_distance):
         """
+        b: batch size 
+        h: history size
+        d: embedding size
+        k: hidden dim
+        """
+
+        history_ = self.embed_history(user_history) # (b * h * d)
+        region = self.embed_region(history_region) # (b * h * d)
+        history = torch.cat((history_, region), -1) # (b * h * 2d)
+        
+        target_ = self.embed_target(target_item) # (b * d)
+        target_region_ = self.embed_region(target_region) # (b * d)
+        target =  torch.cat((target_, target_region_),-1) # (b * 2d)
+        
+        batch_dim = len(target) #
+        history_dim   = len(history[0])
+        target = torch.reshape(target,(batch_dim, 1,-1)) # (b * 2d) -> (b * 1 * 2d)
+        
+        input = history * target # (b * h * 2d)
+        attention_result = self.relu(self.attn_layer1(input)) # (b * h * k)
+        attention_result = self.attn_layer2(attention_result) # (b * h * 1)
+        li = np.zeros((batch_dim,history_dim))
+        dist_embedding_weights = self.embed_distance(torch.LongTensor(li).reshape((batch_dim,history_dim)).to(self.DEVICE)) # (b * h * d)
+        target_distance = target_distance.unsqueeze(-1) # (b * h * 1)
+        distance = torch.sum(target_distance * dist_embedding_weights, dim = -1) # (b * h * 1)
+        distance = distance.unsqueeze(-1) # b => b * 1 * 1
+        
+        exp_input = attention_result + distance # (b * h * 1)
+        
+        exp_A = torch.exp(exp_input) # (b * h * 1) 
+        exp_A = exp_A.squeeze(dim=-1)# (b * h)
+
+        mask = self.get_mask(user_history, target_item) # (b * h)
+        exp_A = exp_A * mask # (b * h)
+        exp_sum = torch.sum(exp_A,dim=-1) # (b)
+        exp_sum = torch.pow(exp_sum, self.beta) # (b)
+
+        attn_weights = torch.divide(exp_A.T,exp_sum).T # (b * h)
+        attn_weights = attn_weights.reshape([batch_dim,-1, 1])# (b * h * 1)
+        result = history * attn_weights# (b * h * 2d) 
+        target = target.reshape([batch_dim,-1,1]) # (b * 2d * 1)
+
+        prediction = torch.bmm(result, target).squeeze(dim=-1) # (b * h * 1) -> (b * h)
+        prediction = torch.sum(prediction, dim = -1) # (b)
+        
+        #print(f"#### return prediction {prediction.shape},{prediction}")
+        #print("########################### def attention network end ##################################")
+        return prediction
+
+    def get_mask(self, user_history, target_item):
+        target_item = target_item.reshape([len(target_item),1])
+        mask = user_history != target_item
+        return mask
+    def loss_function(self, prediction, label):
+        return self.loss_func(prediction, label)
+
+class NAIS_distance_Embedding(nn.Module):
+    def __init__(self, item_num, embed_size, hidden_size, beta, region_embed_size, dist_embed_size): # embed_size : 64, beta : 0.5, region_embed_size : 152 dist_embed_size : 1
+        super(NAIS_distance_Embedding, self).__init__()
+        self.DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        self.embed_size = embed_size # concat 연산 시 * 2
+        self.item_num = item_num
+        self.beta = beta
+        self.hidden_size=hidden_size
+        self.embed_history = nn.Embedding(item_num, embed_size) # (m:14586 * d:64), 과거 방문한 데이터(q), 유저별로 각각 하나씩 가져야하나 ?
+        self.embed_target = nn.Embedding(item_num, embed_size) # (m:14586 * d:64), 예측 데이터(p)
+        # with open(".\data\Yelp\poi_region_sorted.txt", 'r') as file:
+        #     # 모든 행을 읽어와서 첫 번째 열만 리스트로 변환
+        #     loaded_embed = [int(line.split('\t')[1].strip()) for line in file.readlines()]
+        self.embed_distance = nn.Embedding(dist_embed_size, embed_size) # 
+        
+        self.relu = nn.ReLU()
+        self.sigmoid = nn.Sigmoid()
+        self.loss_func = nn.BCELoss() # binary cross entropy
+
+        # Attention을 위한 MLP Layer 생성
+        self.attn_layer1 = nn.Linear(embed_size, hidden_size)
+        self.attn_layer2 = nn.Linear(hidden_size, 1, bias = False)
+
+        self._init_weight_()
+
+    def _init_weight_(self):
+        # weight 초기화, 표준편차 : 0.01
+        nn.init.normal_(self.embed_history.weight, std=0.01)
+        nn.init.normal_(self.embed_target.weight, std=0.01)
+        nn.init.normal_(self.embed_distance.weight, std=0.01)
+        
+        # bias 초기화
+        for m in self.modules():
+            if isinstance(m, nn.Linear) and m.bias is not None:
+                m.bias.data.zero_()
+
+    def forward(self, history, target, history_region, target_distance):
+        #배치 사이즈만큼 잘라서 넣어줌
+        #print(len(history), len(target))
+        history_tensor = history
+        target_tensor = target
+        
+        
+        history_region_idx = history_region
+        # target_region_idx = target_region
+        
+        target_distance_tensor = target_distance
+
+        prediction = self.attention_network(history_tensor,target_tensor, history_region_idx, target_distance_tensor)
+        return self.sigmoid(prediction)
+
+    def attention_network(self, user_history, target_item, history_region, target_distance):
+        """
         b: batch size (= input_item_num)
         h: history size (h * 5 = item_num = batch_size)
         d: embedding size
@@ -269,13 +378,9 @@ class NAIS_region_distance_Embedding(nn.Module):
         #print(len(user_history), user_history)
         #print(len(target_item), target_item)
 
-        history_ = self.embed_history(user_history) #
-        region = self.embed_region(history_region) # 
-        history = torch.cat((history_, region), -1)
+        history = self.embed_history(user_history) #
         
-        target_ = self.embed_target(target_item) #
-        target_region_ = self.embed_region(target_region)
-        target =  torch.cat((target_, target_region_),-1)
+        target = self.embed_target(target_item) #
         
         batch_dim = len(target) #
         target = torch.reshape(target,(batch_dim, 1,-1))

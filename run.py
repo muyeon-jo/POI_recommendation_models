@@ -1,6 +1,7 @@
 from argparse import ArgumentParser
+from datetime import datetime
 import numpy as np
-
+import os
 import eval_metrics
 import datasets
 from batches import get_NAIS_batch_test_region,get_NAIS_batch_region,get_NAIS_batch_test,get_NAIS_batch,get_BPR_batch
@@ -10,12 +11,18 @@ from model import NAIS_basic, NAIS_regionEmbedding,NAIS_region_distance_Embeddin
 import time
 import random
 import math
+import validation as val
 import multiprocessing as mp
-if torch.cuda.is_available():
-    import torch.cuda as T
-else:
-    import torch as T
+import torch.cuda as T
+import pickle
+def pickle_load(name):
+    with open(name, 'rb') as f:
+        data = pickle.load(f)
+    return data
 
+def pickle_save(data, name):
+    with open(name, 'wb') as f:
+	    pickle.dump(data, f, protocol=pickle.HIGHEST_PROTOCOL)
 
 # parser = ArgumentParser(description="SAE-NAD")
 # parser.add_argument('-e', '--epoch', type=int, default=60, help='number of epochs for GAT')
@@ -35,8 +42,6 @@ def normalize(scores):
     if not max_score == 0:
         scores = [s / max_score for s in scores]
     return scores
-
-
 class Args:
     def __init__(self):
         self.lr = 0.01 # learning rate
@@ -51,17 +56,28 @@ class Args:
         self.beta = 0.5
         self.powerlaw_weight = 0.2
 
-def train_NAIS(train_matrix, test_positive, test_negative, dataset):
+def train_NAIS(train_matrix, test_positive, test_negative, val_positive, val_negative, dataset):
+    now = datetime.now()
+    model_directory = "./model/"+now.strftime('%Y-%m-%d %H_%M_%S')+"NAIS"
+    result_directory = "./result/"+now.strftime('%Y-%m-%d %H_%M_%S')+"NAIS"
+    if not os.path.exists(model_directory):
+        os.makedirs(model_directory)
+    if not os.path.exists(result_directory):
+        os.makedirs(result_directory)
+    max_recall = 0.0
+    k_list=[5, 10, 15, 20, 25, 30]
 
     args = Args()
     num_users = dataset.user_num
     num_items = dataset.poi_num
 
-    
     model = NAIS_basic(num_items, args.factor_num,args.factor_num,0.5).to(DEVICE)
 
     # 옵티마이저 생성 (adagrad 사용)
     optimizer = torch.optim.Adagrad(model.parameters(), lr=args.lr, weight_decay=args.lamda)
+
+    #validation 최대값 저장
+    
 
     for e in range(args.epochs):
         model.train()
@@ -69,14 +85,12 @@ def train_NAIS(train_matrix, test_positive, test_negative, dataset):
         start_time = int(time.time())
 
         idx = list(range(num_users))
-        # random.shuffle(idx)
+        random.shuffle(idx)
 
         for buid in idx:
             user_history, train_data, train_label = get_NAIS_batch(train_matrix,test_negative,num_items,buid,args.num_ng)
             model.zero_grad() # 그래디언트 초기화
             prediction = model(user_history, train_data)
-            # print(train_label)
-            # print(prediction)
             loss = model.loss_func(prediction,train_label)
             train_loss += loss.item()
             loss.backward() # 역전파 및 그래디언트 계산
@@ -84,66 +98,38 @@ def train_NAIS(train_matrix, test_positive, test_negative, dataset):
         end_time = int(time.time())
         print("Train Epoch: {}; time: {} sec; loss: {:.4f}".format(e+1, end_time-start_time,train_loss))
         
-        if e%30==0:
-            model.eval() # 모델을 평가 모드로 설정
-            alpha = args.powerlaw_weight
-            recommended_list = []
-            recommended_list_g = []
-            start_time = int(time.time())
+        model.eval() # 모델을 평가 모드로 설정
+        start_time = int(time.time())
+        val_precision, val_recall, val_hit = val.NAIS_validation(model,args,num_users,val_positive,val_negative,train_matrix,True,[10])
+        end_time = int(time.time())
+        print("eval time: {} sec".format(end_time-start_time))
+        if(max_recall < val_recall[0]):
+            torch.save(model, model_directory+"/model")
+            precision, recall, hit = val.NAIS_validation(model,args,num_users,test_positive,test_negative,train_matrix,False,k_list)
+            f=open(result_directory+"/results.txt","w")
+            f.write("epoch:{}\n".format(e))
+            f.write("@k: " + str(k_list)+"\n")
+            f.write("prec:" + str(precision)+"\n")
+            f.write("recall:" + str(recall)+"\n")
+            f.write("hit:" + str(hit)+"\n")
+            f.close()
+def train_NAIS_region(train_matrix, test_positive, test_negative, val_positive, val_negative, dataset):
 
-            input_list = []
-            for i in range(5):
-                input_list.append((G,train_matrix,test_positive,test_negative,int(num_users*(i*0.2)),int(num_users*((i+1)*0.2))))
+    now = datetime.now()
+    model_directory = "./model/"+now.strftime('%Y-%m-%d %H_%M_%S')+"NAIS_region"
+    result_directory = "./result/"+now.strftime('%Y-%m-%d %H_%M_%S')+"NAIS_region"
+    if not os.path.exists(model_directory):
+        os.makedirs(model_directory)
+    if not os.path.exists(result_directory):
+        os.makedirs(result_directory)
+    max_recall = 0.0
+    k_list=[5, 10, 15, 20, 25, 30]
 
-            pool = mp.Pool(processes=5)
-            re = pool.starmap(G_score_mp, input_list)
-            
-            pool.close()
-            pool.join()
-            user_history=[]
-            target_list=[]
-            G_score=[]
-            for i in range(5):
-                user_history = user_history + re[i][0]
-                target_list = target_list + re[i][1]
-                G_score = G_score + re[i][2]
-
-            for user_id in range(num_users):
-                prediction = model(user_history[user_id].to(DEVICE), target_list[user_id].to(DEVICE))
-                _, indices = torch.topk(prediction, args.topk)
-                recommended_list.append([target_list[user_id][i].item() for i in indices])
-
-                prediction = (1-alpha)*prediction + alpha * G_score[user_id].to(DEVICE)
-
-                _, indices = torch.topk(prediction, args.topk)
-                recommended_list_g.append([target_list[user_id][i].item() for i in indices])
-
-                # user_history, target_list, train_label = get_NAIS_batch_test(train_matrix,test_positive,test_negative,user_id)
-                # prediction = model(user_history, target_list)
-
-                # _, indices = torch.topk(prediction, args.topk)
-                # recommended_list.append([target_list[i].item() for i in indices])
-
-                # G_score = normalize([G.predict(user_id,poi_id) for poi_id in target_list])
-                # G_score = torch.tensor(np.array(G_score)).to(DEVICE)
-                # prediction = (1-alpha)*prediction + alpha * G_score
-
-                # _, indices = torch.topk(prediction, args.topk)
-                # recommended_list_g.append([target_list[i].item() for i in indices])
-            end_time = int(time.time())
-            print("time: {}".format(end_time-start_time))
-            k_list=[5, 10, 15, 20,25,30]
-            precision, recall, hit = eval_metrics.evaluate_mp(test_positive,recommended_list,k_list)
-            precision_g, recall_g, hit_g = eval_metrics.evaluate_mp(test_positive,recommended_list_g,k_list)
-
-    return recall , precision, hit
-
-def train_NAIS_region(train_matrix, test_positive, test_negative, dataset):
     args = Args()
     num_users = dataset.user_num
     num_items = dataset.poi_num
     region_num = datasets.get_region_num(dataset.directory_path)
-    with open(".\data\Yelp\poi_region_sorted.txt", 'r') as file:
+    with open(dataset.directory_path+"poi_region_sorted.txt", 'r') as file:
         # 모든 행을 읽어와서 첫 번째 열만 리스트로 변환
         businessRegionEmbedList = [int(line.split('\t')[1].strip()) for line in file.readlines()]
     
@@ -174,43 +160,42 @@ def train_NAIS_region(train_matrix, test_positive, test_negative, dataset):
             loss.backward() # 역전파 및 그래디언트 계산
             optimizer.step() # 옵티마이저 업데이트
         end_time = int(time.time())
-        print("Train Epoch: {}; time: {} sec; loss: {:.4f}".format(e+1, end_time-start_time,train_loss/len(idx)))
+        print("Train Epoch: {}; time: {} sec; loss: {:.4f}".format(e+1, end_time-start_time,train_loss))
         
-        if(e%10 == 0):
-            model.eval() # 모델을 평가 모드로 설정
-            alpha = args.powerlaw_weight
-            recommended_list = []
-            recommended_list_g = []
-            start_time = time.time()
-            for user_id in range(num_users):
-                user_history, target_list, train_label, user_history_region, train_data_region = get_NAIS_batch_test_region(train_matrix,test_positive,test_negative,user_id, businessRegionEmbedList)
+        model.eval() # 모델을 평가 모드로 설정
+        start_time = int(time.time())
+        val_precision, val_recall, val_hit = val.NAIS_region_validation(model,args,num_users,val_positive,val_negative,train_matrix,businessRegionEmbedList,True,[10])
+        end_time = int(time.time())
+        print("eval time: {} sec".format(end_time-start_time))
+        if(max_recall < val_recall[0]):
+            torch.save(model, model_directory+"/model")
+            precision, recall, hit = val.NAIS_region_validation(model,args,num_users,test_positive,test_negative,train_matrix,businessRegionEmbedList, False,k_list)
+            f=open(result_directory+"/results.txt","w")
+            f.write("epoch:{}\n".format(e))
+            f.write("@k: " + str(k_list)+"\n")
+            f.write("prec:" + str(precision)+"\n")
+            f.write("recall:" + str(recall)+"\n")
+            f.write("hit:" + str(hit)+"\n")
+            f.close()
 
-                prediction = model(user_history, target_list, user_history_region, train_data_region)
+def train_NAIS_region_distance(train_matrix, test_positive, test_negative, val_positive, val_negative, dataset):
 
-                _, indices = torch.topk(prediction, args.topk)
-                recommended_list.append([target_list[i].item() for i in indices])
+    now = datetime.now()
+    model_directory = "./model/"+now.strftime('%Y-%m-%d %H_%M_%S')+"NAIS_region_distance"
+    result_directory = "./result/"+now.strftime('%Y-%m-%d %H_%M_%S')+"NAIS_region_distance"
+    if not os.path.exists(model_directory):
+        os.makedirs(model_directory)
+    if not os.path.exists(result_directory):
+        os.makedirs(result_directory)
+    max_recall = 0.0
+    k_list=[5, 10, 15, 20, 25, 30]
 
-                G_score = normalize([G.predict(user_id,poi_id) for poi_id in target_list])
-                G_score = torch.tensor(np.array(G_score)).to(DEVICE)
-                prediction = (1-alpha)*prediction + alpha * G_score
-
-                _, indices = torch.topk(prediction, args.topk)
-                recommended_list_g.append([target_list[i].item() for i in indices])
-            end_time = int(time.time())
-            print("time: {}".format(end_time-start_time))
-            k_list=[5, 10, 15, 20,25,30]
-            precision, recall, hit = eval_metrics.evaluate_mp(test_positive,recommended_list,k_list)
-            precision_g, recall_g, hit_g = eval_metrics.evaluate_mp(test_positive,recommended_list_g,k_list)
-            
-
-    return recall , precision, hit
-def train_NAIS_region_distance(train_matrix, test_positive, test_negative, dataset):
     args = Args()
     num_users = dataset.user_num
     num_items = dataset.poi_num
     poi_coos = G.poi_coos 
     region_num = datasets.get_region_num(dataset.directory_path)
-    with open(".\data\Yelp\poi_region_sorted.txt", 'r') as file:
+    with open(dataset.directory_path+"poi_region_sorted.txt", 'r') as file:
         # 모든 행을 읽어와서 첫 번째 열만 리스트로 변환
         businessRegionEmbedList = [int(line.split('\t')[1].strip()) for line in file.readlines()]
 
@@ -218,10 +203,6 @@ def train_NAIS_region_distance(train_matrix, test_positive, test_negative, datas
 
     # 옵티마이저 생성 (adagrad 사용)
     optimizer = torch.optim.Adagrad(model.parameters(), lr=args.lr, weight_decay=args.lamda)
-
-    recall = []
-    prec = []
-    hit = []
 
     for e in range(args.epochs):
         model.train()
@@ -236,12 +217,11 @@ def train_NAIS_region_distance(train_matrix, test_positive, test_negative, datas
             target_pois = [(poi_coos[i][0], poi_coos[i][1]) for i in train_data] # 타겟 데이터
             
             target_dist = []
-            for poi1 in target_pois: #타겟 데이터에 대해서 거리 계산
-                avg = 0
-                for poi2 in history_pois:
-                    avg += dist(poi1, poi2)
-                avg /= len(history_pois)
-                target_dist.append(avg)
+            for poi1 in target_pois: #타겟 데이터에 대해서 거리 계산 batch_size
+                hist = []
+                for poi2 in history_pois:#history_size
+                    hist.append(dist(poi1, poi2))
+                target_dist.append(hist)
             target_dist=torch.tensor(target_dist,dtype=torch.float32).to(DEVICE)
             model.zero_grad() # 그래디언트 초기화
             prediction = model(user_history, train_data, user_history_region, train_data_region, target_dist)
@@ -250,47 +230,35 @@ def train_NAIS_region_distance(train_matrix, test_positive, test_negative, datas
             loss.backward() # 역전파 및 그래디언트 계산
             optimizer.step() # 옵티마이저 업데이트
         end_time = int(time.time())
-        print("Train Epoch: {}; time: {} sec; loss: {:.4f}".format(e+1, end_time-start_time,train_loss/len(idx)))
+        print("Train Epoch: {}; time: {} sec; loss: {:.4f}".format(e+1, end_time-start_time,train_loss))
         
-        if e % 10 == 0:
-            model.eval() # 모델을 평가 모드로 설정
-            alpha = args.powerlaw_weight
-            recommended_list = []
-            recommended_list_g = []
-            start_time = time.time()
-            for user_id in range(num_users):
-                user_history, target_list, train_label, user_history_region, train_data_region = get_NAIS_batch_test_region(train_matrix,test_positive,test_negative,user_id, businessRegionEmbedList)        
-                history_pois = [(poi_coos[i][0], poi_coos[i][1]) for i in user_history[0]] # 방문한 데이터
-                target_pois = [(poi_coos[i][0], poi_coos[i][1]) for i in target_list] # 타겟 데이터
-                target_dist = []
-                for poi1 in target_pois: #타겟 데이터에 대해서 거리 계산
-                    avg = 0
-                    for poi2 in history_pois:
-                        avg += dist(poi1, poi2)
-                    avg /= len(history_pois)
-                    target_dist.append(avg)
-                target_dist=torch.tensor(target_dist,dtype=torch.float32).to(DEVICE)
-                prediction = model(user_history, target_list, user_history_region, train_data_region, target_dist)
+        model.eval() # 모델을 평가 모드로 설정
+        start_time = int(time.time())
+        val_precision, val_recall, val_hit = val.NAIS_region_distance_validation(model,args,num_users,val_positive,val_negative,train_matrix,businessRegionEmbedList, poi_coos,True,[10])
+        end_time = int(time.time())
+        print("eval time: {} sec".format(end_time-start_time))
+        if(max_recall < val_recall[0]):
+            torch.save(model, model_directory+"/model")
+            precision, recall, hit = val.NAIS_region_distance_validation(model,args,num_users,test_positive,test_negative,train_matrix,businessRegionEmbedList, poi_coos, False,k_list)
+            f=open(result_directory+"/results.txt","w")
+            f.write("epoch:{}\n".format(e))
+            f.write("@k: " + str(k_list)+"\n")
+            f.write("prec:" + str(precision)+"\n")
+            f.write("recall:" + str(recall)+"\n")
+            f.write("hit:" + str(hit)+"\n")
+            f.close()
 
-                _, indices = torch.topk(prediction, args.topk)
-                recommended_list.append([target_list[i].item() for i in indices])
+def train_BPR(train_matrix, test_positive, test_negative, val_positive, val_negative, dataset):
+    now = datetime.now()
+    model_directory = "./model/",now.strftime('%Y-%m-%d %H:%M:%S')
+    result_directory = "./result/",now.strftime('%Y-%m-%d %H:%M:%S')
+    if not os.path.exists(model_directory):
+        os.makedirs(model_directory)
+    if not os.path.exists(result_directory):
+        os.makedirs(result_directory)
+    max_recall = 0.0
+    k_list=[5, 10, 15, 20, 25, 30]
 
-                G_score = normalize([G.predict(user_id,poi_id) for poi_id in target_list])
-                G_score = torch.tensor(np.array(G_score)).to(DEVICE)
-                prediction = (1-alpha)*prediction + alpha * G_score
-
-                _, indices = torch.topk(prediction, args.topk)
-                recommended_list_g.append([target_list[i].item() for i in indices])
-            end_time = int(time.time())
-            print("time: {}".format(end_time-start_time))
-            k_list=[5, 10, 15, 20,25,30]
-            precision, recall, hit = eval_metrics.evaluate_mp(test_positive,recommended_list,k_list)
-            precision_g, recall_g, hit_g = eval_metrics.evaluate_mp(test_positive,recommended_list_g,k_list)
-            
-
-    return recall , precision, hit
-
-def train_BPR(train_matrix, test_positive, test_negative,  dataset):
     args = Args()
     num_users = dataset.user_num
     num_items = dataset.poi_num
@@ -374,27 +342,24 @@ def get_bpr_test_input_mp(start_uid,end_uid,test_negative,test_positive):
 
     return (user_tensor_list,target_tensor_list)
         
-def G_score_mp(G,train_matrix, test_positive, test_negative, user_id_min,user_id_max):
-    user_histories=[]
-    target_lists=[]
-    G_scores=[]
-    for uid in range(user_id_min,user_id_max):
-        user_history, target_list, _ = get_NAIS_batch_test(train_matrix,test_positive,test_negative,uid)
-        G_score = normalize([G.predict(uid,poi_id) for poi_id in target_list])
-        G_score = torch.tensor(np.array(G_score))
-        user_histories.append(user_history)
-        target_lists.append(target_list)
-        G_scores.append(G_score)
-    return (user_histories,target_lists,G_scores)
+
 def main():
-    dataset_ = datasets.Yelp()
-    train_matrix,  test_positive, test_negative, place_coords = dataset_.generate_data(0)
+    print("data loading")
+    # dataset_ = datasets.Dataset(9902,6427,"./data/philadelphia_downtown/")
+    # train_matrix, test_positive, test_negative, val_positive, val_negative, place_coords = dataset_.generate_data(0)
+    # pickle_save((train_matrix, test_positive, test_negative, val_positive, val_negative, place_coords,dataset_),"dataset+.pkl")
+    train_matrix, test_positive, test_negative, val_positive, val_negative, place_coords, dataset_ = pickle_load("dataset+.pkl")
+    print("train data generated")
     # datasets.get_region(place_coords,200,dataset_.directory_path)
     # datasets.get_region_num(dataset_.directory_path)
-    print("data generated")
-
+    # print("geo file generated")
+    
     G.fit_distance_distribution(train_matrix, place_coords)
-    train_NAIS(train_matrix, test_positive, test_negative, dataset_)
+    
+    print("train start")
+    # train_NAIS(train_matrix, test_positive, test_negative, val_positive, val_negative, dataset_)
+    # train_NAIS_region(train_matrix, test_positive, test_negative, val_positive, val_negative, dataset_)
+    train_NAIS_region_distance(train_matrix, test_positive, test_negative, val_positive, val_negative, dataset_)
 
 
 if __name__ == '__main__':
