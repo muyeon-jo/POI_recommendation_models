@@ -47,7 +47,7 @@ class Args:
         self.lr = 0.01 # learning rate
         self.lamda = 0.00 # model regularization rate
         self.batch_size = 4096 # batch size for training
-        self.epochs = 150 # training epoches
+        self.epochs = 50 # training epoches
         self.topk = 50 # compute metrics@top_k
         self.factor_num = 16 # predictive factors numbers in the model
         self.region_embed_size=152
@@ -199,7 +199,7 @@ def train_NAIS_region_distance(train_matrix, test_positive, test_negative, val_p
         # 모든 행을 읽어와서 첫 번째 열만 리스트로 변환
         businessRegionEmbedList = [int(line.split('\t')[1].strip()) for line in file.readlines()]
 
-    model = NAIS_region_distance_Embedding(num_items, args.factor_num, args.factor_num*2, args.beta, args.region_embed_size, region_num).to(DEVICE)
+    model = NAIS_region_distance_Embedding(num_items, args.factor_num, args.factor_num*2, args.beta, region_num,1).to(DEVICE)
 
     # 옵티마이저 생성 (adagrad 사용)
     optimizer = torch.optim.Adagrad(model.parameters(), lr=args.lr, weight_decay=args.lamda)
