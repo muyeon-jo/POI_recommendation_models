@@ -52,52 +52,84 @@ class NAIS_basic(nn.Module):
 
     def attention_network(self, user_history, target_item):
         """
-        b: batch size (= input_item_num)
-        h: history size (h * 5 = item_num = batch_size)
+        b: batch size
+        n: history size
         d: embedding size
         """
-        #print("#### def attention network start #####")
-        #print(len(user_history), user_history)
-        #print(len(target_item), target_item)
+        
+        history = self.embed_history(user_history) # (b * n * d)
 
-        history = self.embed_history(user_history) # (b * d)
-        target = self.embed_target(target_item) # (b * d)
-        batch_dim = len(target) # (b)
+        target = self.embed_target(target_item) # (b * 1 * d)
 
+        batch_dim = len(target)
         target = torch.reshape(target,(batch_dim, 1,-1))
-
-        input = history * target # (b*d) * (b*1*d) => (b * b * d)
-
-        attention_result = self.relu(self.attn_layer1(input)) # (b * b * d)
-
-        attention_result = self.attn_layer2(attention_result) # (b * b * 1)
-
-        exp_A = torch.exp(attention_result) # (b * b * 1)
-        #print(f"exp_A : {exp_A.shape}")
-        exp_A = exp_A.squeeze(dim=-1)# (b * b)
-        #print(f"exp_A_Squeeze : {exp_A.shape}")
-
-        mask = self.get_mask(user_history,target_item) # (b * b)
-        #print(f"mask : {mask.shape}")
-        exp_A = exp_A * mask # (b * b)
-        #print(f"exp_A_mask : {exp_A.shape}")
-        exp_sum = torch.sum(exp_A,dim=-1) # (b)
-        #print(f"exp_A_sum : {exp_sum.shape}")
-        exp_sum = torch.pow(exp_sum, self.beta) # (b)
-        #print(f"exp_A_pow : {exp_sum.shape}")
-
-        attn_weights = torch.divide(exp_A.T,exp_sum).T # (b * b)
-        #print(f"attn_weights = {attn_weights.shape}")
-        attn_weights = attn_weights.reshape([batch_dim,-1, 1])# (b * b * 1)
-        #print(f"attn_weights_reshaped = {attn_weights.shape}")
-        result = history * attn_weights# (b * b * d)
+        input = history * target # (b * n * d)
+        result1 = self.relu(self.attn_layer1(input)) # (n * d)
+        
+        result2 = self.attn_layer2(result1) # (n * 1) 
+        
+        exp_A = torch.exp(result2) # (b * n * 1)
+        exp_A = exp_A.squeeze(dim=-1)# (b * n )
+        mask = self.get_mask(user_history,target_item)
+        exp_A = exp_A * mask
+        exp_sum = torch.sum(exp_A,dim=-1) # (b * 1)
+        exp_sum = torch.pow(exp_sum, self.beta) # (b * 1)
+        
+        attn_weights = torch.divide(exp_A.T,exp_sum).T # (b * n)
+        attn_weights = attn_weights.reshape([batch_dim,-1, 1])# (b * n * 1)
+        result = history * attn_weights# (b * n * d)
         target = target.reshape([batch_dim,-1,1]) # (b * d * 1)
-
-
-        prediction = torch.bmm(result, target).squeeze(dim=-1) # (b * b * 1) -> (b * b)
+        
+        prediction = torch.bmm(result, target).squeeze(dim=-1) # (b * n * 1) -> (b * n)
         prediction = torch.sum(prediction, dim = -1) # (b)
-        #print(f"#### return prediction{prediction.shape}")
         return prediction
+        # """
+        # b: batch size (= input_item_num)
+        # h: history size (h * 5 = item_num = batch_size)
+        # d: embedding size
+        # """
+        # #print("#### def attention network start #####")
+        # #print(len(user_history), user_history)
+        # #print(len(target_item), target_item)
+
+        # history = self.embed_history(user_history) # (b * d)
+        # target = self.embed_target(target_item) # (b * d)
+        # batch_dim = len(target) # (b)
+
+        # target = torch.reshape(target,(batch_dim, 1,-1))
+
+        # input = history * target # (b*d) * (b*1*d) => (b * b * d)
+
+        # attention_result = self.relu(self.attn_layer1(input)) # (b * b * d)
+
+        # attention_result = self.attn_layer2(attention_result) # (b * b * 1)
+
+        # exp_A = torch.exp(attention_result) # (b * b * 1)
+        # #print(f"exp_A : {exp_A.shape}")
+        # exp_A = exp_A.squeeze(dim=-1)# (b * b)
+        # #print(f"exp_A_Squeeze : {exp_A.shape}")
+
+        # mask = self.get_mask(user_history,target_item) # (b * b)
+        # #print(f"mask : {mask.shape}")
+        # exp_A = exp_A * mask # (b * b)
+        # #print(f"exp_A_mask : {exp_A.shape}")
+        # exp_sum = torch.sum(exp_A,dim=-1) # (b)
+        # #print(f"exp_A_sum : {exp_sum.shape}")
+        # exp_sum = torch.pow(exp_sum, self.beta) # (b)
+        # #print(f"exp_A_pow : {exp_sum.shape}")
+
+        # attn_weights = torch.divide(exp_A.T,exp_sum).T # (b * b)
+        # #print(f"attn_weights = {attn_weights.shape}")
+        # attn_weights = attn_weights.reshape([batch_dim,-1, 1])# (b * b * 1)
+        # #print(f"attn_weights_reshaped = {attn_weights.shape}")
+        # result = history * attn_weights# (b * b * d)
+        # target = target.reshape([batch_dim,-1,1]) # (b * d * 1)
+
+
+        # prediction = torch.bmm(result, target).squeeze(dim=-1) # (b * b * 1) -> (b * b)
+        # prediction = torch.sum(prediction, dim = -1) # (b)
+        #print(f"#### return prediction{prediction.shape}")
+        # return prediction
 
     def get_mask(self, user_history, target_item):
         target_item = target_item.reshape([len(target_item),1])
@@ -115,9 +147,7 @@ class NAIS_regionEmbedding(nn.Module):
         self.hidden_size=hidden_size
         self.embed_history = nn.Embedding(item_num, embed_size) # (m:14586 * d:64), 과거 방문한 데이터(q), 유저별로 각각 하나씩 가져야하나 ?
         self.embed_target = nn.Embedding(item_num, embed_size) # (m:14586 * d:64), 예측 데이터(p)
-        # with open(".\data\Yelp\poi_region_sorted.txt", 'r') as file:
-        #     # 모든 행을 읽어와서 첫 번째 열만 리스트로 변환
-        #     loaded_embed = [int(line.split('\t')[1].strip()) for line in file.readlines()]
+        
         self.embed_region = nn.Embedding(region_embed_size, embed_size) # 
 
         self.relu = nn.ReLU()
@@ -283,9 +313,9 @@ class NAIS_region_distance_Embedding(nn.Module):
         attention_result = self.relu(self.attn_layer1(input)) # (b * h * k)
         attention_result = self.attn_layer2(attention_result) # (b * h * 1)
         li = np.zeros((batch_dim,history_dim))
-        dist_embedding_weights = self.embed_distance(torch.LongTensor(li).reshape((batch_dim,history_dim)).to(self.DEVICE)) # (b * h * d)
+        dist_embedding = self.embed_distance(torch.LongTensor(li).reshape((batch_dim,history_dim)).to(self.DEVICE)) # (b * h * d)
         target_distance = target_distance.unsqueeze(-1) # (b * h * 1)
-        distance = torch.sum(target_distance * dist_embedding_weights, dim = -1) # (b * h * 1)
+        distance = torch.sum(dist_embedding * target_distance, dim = -1) # (b * h * 1)
         distance = distance.unsqueeze(-1) # b => b * 1 * 1
         
         exp_input = attention_result + distance # (b * h * 1)
@@ -327,9 +357,6 @@ class NAIS_distance_Embedding(nn.Module):
         self.hidden_size=hidden_size
         self.embed_history = nn.Embedding(item_num, embed_size) # (m:14586 * d:64), 과거 방문한 데이터(q), 유저별로 각각 하나씩 가져야하나 ?
         self.embed_target = nn.Embedding(item_num, embed_size) # (m:14586 * d:64), 예측 데이터(p)
-        # with open(".\data\Yelp\poi_region_sorted.txt", 'r') as file:
-        #     # 모든 행을 읽어와서 첫 번째 열만 리스트로 변환
-        #     loaded_embed = [int(line.split('\t')[1].strip()) for line in file.readlines()]
         self.embed_distance = nn.Embedding(dist_embed_size, embed_size) # 
         
         self.relu = nn.ReLU()
@@ -374,46 +401,174 @@ class NAIS_distance_Embedding(nn.Module):
         h: history size (h * 5 = item_num = batch_size)
         d: embedding size
         """
-        #print("########################### def attention network start ##################################")
-        #print(len(user_history), user_history)
-        #print(len(target_item), target_item)
-
-        history = self.embed_history(user_history) #
-        
-        target = self.embed_target(target_item) #
+        history = self.embed_history(user_history) # (b * h * d)
+        target = self.embed_target(target_item) # (b * d)
         
         batch_dim = len(target) #
-        target = torch.reshape(target,(batch_dim, 1,-1))
+        history_dim   = len(history[0])
+        target = torch.reshape(target,(batch_dim, 1,-1)) # (b * 1 * d)
         
-        input = history * target # 
-        attention_result = self.relu(self.attn_layer1(input)) # 
-        attention_result = self.attn_layer2(attention_result) # 
+        input = history * target # (b * h * d)
+        attention_result = self.relu(self.attn_layer1(input)) # (b * h * k)
+        attention_result = self.attn_layer2(attention_result) # (b * h * 1)
+        li = np.zeros((batch_dim,history_dim))
+        dist_embedding = self.embed_distance(torch.LongTensor(li).reshape((batch_dim,history_dim)).to(self.DEVICE)) # (b * h * d)
+        target_distance = target_distance.unsqueeze(-1) # (b * h * 1)
+        distance = torch.sum(dist_embedding * target_distance, dim = -1) # (b * h * 1)
+        distance = distance.unsqueeze(-1) # b => b * 1 * 1
         
-        dist_embedding_weights = self.embed_distance(torch.tensor(0).to(self.DEVICE)) # d
-        target_distance = target_distance.unsqueeze(1) # b => b * 1
-        distance = torch.sum(target_distance * dist_embedding_weights, dim = 1)
-        distance = distance.unsqueeze(1).unsqueeze(2) # b => b * 1 * 1
+        exp_input = attention_result + distance # (b * h * 1)
         
-        exp_input = attention_result + distance # b * d * 1 + b * 1 * 1 = b * d * 1
-        
-        exp_A = torch.exp(exp_input) # (b * b * 1) 
-        exp_A = exp_A.squeeze(dim=-1)# (b * b)
+        exp_A = torch.exp(exp_input) # (b * h * 1) 
+        exp_A = exp_A.squeeze(dim=-1)# (b * h)
 
-        mask = self.get_mask(user_history, target_item) # (b * b)
-        exp_A = exp_A * mask # (b * b)
+        mask = self.get_mask(user_history, target_item) # (b * h)
+        exp_A = exp_A * mask # (b * h)
         exp_sum = torch.sum(exp_A,dim=-1) # (b)
         exp_sum = torch.pow(exp_sum, self.beta) # (b)
 
-        attn_weights = torch.divide(exp_A.T,exp_sum).T # (b * b)
-        attn_weights = attn_weights.reshape([batch_dim,-1, 1])# (b * b * 1)
-        result = history * attn_weights# (b * b * d) => 여기서 갑자기 왜 0번 인덱스는 0000??
-        target = target.reshape([batch_dim,-1,1]) # (b * d * 1)
+        attn_weights = torch.divide(exp_A.T,exp_sum).T # (b * h)
+        attn_weights = attn_weights.reshape([batch_dim,-1, 1])# (b * h * 1)
+        result = history * attn_weights# (b * h * 2d) 
+        target = target.reshape([batch_dim,-1,1]) # (b * 2d * 1)
 
-        prediction = torch.bmm(result, target).squeeze(dim=-1) # (b * b * 1) -> (b * b)
+        prediction = torch.bmm(result, target).squeeze(dim=-1) # (b * h * 1) -> (b * h)
         prediction = torch.sum(prediction, dim = -1) # (b)
         
         #print(f"#### return prediction {prediction.shape},{prediction}")
         #print("########################### def attention network end ##################################")
+        return prediction
+
+    def get_mask(self, user_history, target_item):
+        target_item = target_item.reshape([len(target_item),1])
+        mask = user_history != target_item
+        return mask
+    def loss_function(self, prediction, label):
+        return self.loss_func(prediction, label)
+
+class NAIS_region_distance_disentangled_Embedding(nn.Module):
+    def __init__(self, item_num, embed_size, hidden_size, beta, region_embed_size, dist_embed_size): # embed_size : 64, beta : 0.5, region_embed_size : 152 dist_embed_size : 1
+        super(NAIS_region_distance_disentangled_Embedding, self).__init__()
+        self.DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        self.embed_size = embed_size # concat 연산 시 * 2
+        self.item_num = item_num
+        self.beta = beta
+        self.hidden_size=hidden_size
+        self.embed_history = nn.Embedding(item_num, embed_size) # (m:14586 * d:64), 과거 방문한 데이터(q), 유저별로 각각 하나씩 가져야하나 ?
+        self.embed_target = nn.Embedding(item_num, embed_size) # (m:14586 * d:64), 예측 데이터(p)
+        # with open(".\data\Yelp\poi_region_sorted.txt", 'r') as file:
+        #     # 모든 행을 읽어와서 첫 번째 열만 리스트로 변환
+        #     loaded_embed = [int(line.split('\t')[1].strip()) for line in file.readlines()]
+        self.embed_region = nn.Embedding(region_embed_size, embed_size) # 
+        self.embed_distance = nn.Embedding(dist_embed_size, embed_size) # 
+        
+        self.relu = nn.ReLU()
+        self.sigmoid = nn.Sigmoid()
+        self.loss_func = nn.BCELoss() # binary cross entropy
+
+        # Attention을 위한 MLP Layer 생성
+        self.attn_layer1 = nn.Linear(embed_size , hidden_size)
+        self.attn_layer2 = nn.Linear(hidden_size, 1, bias = False)
+
+        self.region_attn_layer1 = nn.Linear(embed_size , hidden_size)
+        self.region_attn_layer2 = nn.Linear(hidden_size, 1, bias = False)
+
+        self._init_weight_()
+
+    def _init_weight_(self):
+        # weight 초기화, 표준편차 : 0.01
+        nn.init.normal_(self.embed_history.weight, std=0.01)
+        nn.init.normal_(self.embed_target.weight, std=0.01)
+        nn.init.normal_(self.embed_region.weight, std=0.01)
+        nn.init.normal_(self.embed_distance.weight, std=0.01)
+        
+        # bias 초기화
+        for m in self.modules():
+            if isinstance(m, nn.Linear) and m.bias is not None:
+                m.bias.data.zero_()
+
+    def forward(self, history, target, history_region, target_region, target_distance):
+        #배치 사이즈만큼 잘라서 넣어줌
+        #print(len(history), len(target))
+        history_tensor = history
+        target_tensor = target
+        
+        
+        history_region_idx = history_region
+        target_region_idx = target_region
+        
+        target_distance_tensor = target_distance
+
+        prediction = self.attention_network(history_tensor,target_tensor, history_region_idx, target_region_idx, target_distance_tensor)
+        return self.sigmoid(prediction)
+
+    def attention_network(self, user_history, target_item, history_region, target_region, target_distance):
+        """
+        b: batch size 
+        h: history size
+        d: embedding size
+        k: hidden dim
+        """
+
+        history = self.embed_history(user_history) # (b * h * d)
+        history_region_ = self.embed_region(history_region) # (b * h * d)
+        
+        target = self.embed_target(target_item) # (b * d)
+        target_region_ = self.embed_region(target_region) # (b * d)
+        
+        batch_dim = len(target) #
+        history_dim   = len(history[0])
+
+        target = torch.reshape(target,(batch_dim, 1,-1)) # (b * 2d) -> (b * 1 * 2d)
+        target_region_ = torch.reshape(target_region_,(batch_dim,1,-1))
+
+        input = history * target # (b * h * 2d)
+        region_input = history_region_ * target_region_
+
+        attention_result = self.relu(self.attn_layer1(input)) # (b * h * k)
+        attention_result = self.attn_layer2(attention_result) # (b * h * 1)
+
+        region_att_result = self.relu(self.region_attn_layer1(region_input))
+        region_att_result1 = self.region_attn_layer2(region_att_result)
+
+
+        li = np.zeros((batch_dim,history_dim))
+        dist_embedding = self.embed_distance(torch.LongTensor(li).reshape((batch_dim,history_dim)).to(self.DEVICE)) # (b * h * d)
+        target_distance = target_distance.unsqueeze(-1) # (b * h * 1)
+        distance = torch.sum(dist_embedding * target_distance, dim = -1) # (b * h * 1)
+        distance = distance.unsqueeze(-1) # b => b * 1 * 1
+        
+        exp_input = attention_result + distance # (b * h * 1)
+        region_exp_input = region_att_result1 + distance
+
+        exp_A = torch.exp(exp_input) # (b * h * 1) 
+        exp_A = exp_A.squeeze(dim=-1)# (b * h)
+        exp_region = torch.exp(region_exp_input)
+        exp_region = exp_region.squeeze(dim=-1)
+
+        mask = self.get_mask(user_history, target_item) # (b * h)
+        exp_A = exp_A * mask # (b * h)
+        region_exp = exp_region * mask
+
+        exp_sum = torch.sum(exp_A,dim=-1) # (b)
+        exp_sum = torch.pow(exp_sum, self.beta) # (b)
+        region_exp_sum = torch.sum(region_exp,dim=-1)
+        region_exp_sum = torch.pow(region_exp_sum,self.beta)
+
+        attn_weights = torch.divide(exp_A.T,exp_sum).T # (b * h)
+        attn_weights = attn_weights.reshape([batch_dim,-1, 1])# (b * h * 1)
+        region_attn_weights = torch.divide(region_exp.T,region_exp_sum).T # (b * h)
+        region_attn_weights = region_attn_weights.reshape([batch_dim,-1, 1])# (b * h * 1)
+
+        result = history * attn_weights# (b * h * 2d) 
+        region_result = history_region_ * region_attn_weights
+        result = torch.cat((result,region_result),dim = -1)
+
+        target = torch.cat((target,target_region_), dim= -1)
+        target = target.reshape([batch_dim,-1,1]) # (b * 2d * 1)
+
+        prediction = torch.bmm(result, target).squeeze(dim=-1) # (b * h * 1) -> (b * h)
+        prediction = torch.sum(prediction, dim = -1) # (b)
         return prediction
 
     def get_mask(self, user_history, target_item):

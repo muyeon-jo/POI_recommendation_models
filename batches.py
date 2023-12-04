@@ -49,13 +49,13 @@ def get_NAIS_batch_test(train_matrix, test_positive, test_negative, uid):
     DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     batch = []
     history = train_matrix.getrow(uid).indices.tolist()
-
     negative = test_negative[uid]
-    for i in range(len(test_positive[uid])):
-        batch.append([history,test_positive[uid][i],1])
-
+    
     for j in range(len(negative)):
         batch.append([history,negative[j],0])
+
+    for i in range(len(test_positive[uid])):
+        batch.append([history,test_positive[uid][i],1])
 
     batch = np.array(batch,dtype=object).T
     user_history = torch.LongTensor(batch[0].tolist()).to(DEVICE)
@@ -111,11 +111,11 @@ def get_NAIS_batch_test_region(train_matrix, test_positive, test_negative, uid, 
     history = train_matrix.getrow(uid).indices.tolist()
     negative = test_negative[uid]
     
-    for i in range(len(test_positive[uid])):
-        batch.append([history,test_positive[uid][i],1])
-        
     for j in range(len(negative)):
         batch.append([history,negative[j],0])
+
+    for i in range(len(test_positive[uid])):
+        batch.append([history,test_positive[uid][i],1])
 
     batch = np.array(batch,dtype=object).T
     user_history = batch[0].tolist()

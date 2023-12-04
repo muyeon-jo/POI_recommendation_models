@@ -10,23 +10,20 @@ def evaluate_mp(positive_list, recommended_list, k_list,val_flag:bool = False):
     precision = pool.starmap(precision_at_k, input_list)
     pool.close()
     pool.join()
-    if(not val_flag):
-        print(precision)
+    print(precision)
 
     pool = mp.Pool(processes=len(k_list))
     recall = pool.starmap(recall_at_k, input_list)
     pool.close()
     pool.join()
-    if(not val_flag):
-        print(recall)
+    print(recall)
 
     pool = mp.Pool(processes=len(k_list))
     hit = pool.starmap(hitrate_at_k, input_list)
     pool.close()
     pool.join()
-    if(not val_flag):
-        print(hit)
-        print("--------")
+    print(hit)
+    print("--------")
     return precision,recall,hit
 
 def precision_at_k_per_sample(actual, predicted, topk):

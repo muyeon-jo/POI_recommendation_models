@@ -41,12 +41,11 @@ def NAIS_region_distance_validation(model, args,num_users, positive, negative, t
         history_pois = [(poi_coos[i][0], poi_coos[i][1]) for i in user_history[0]] # 방문한 데이터
         target_pois = [(poi_coos[i][0], poi_coos[i][1]) for i in target_list] # 타겟 데이터
         target_dist = []
-        for poi1 in target_pois: #타겟 데이터에 대해서 거리 계산
-            avg = 0
-            for poi2 in history_pois:
-                avg += dist(poi1, poi2)
-            avg /= len(history_pois)
-            target_dist.append(avg)
+        for poi1 in target_pois: #타겟 데이터에 대해서 거리 계산 batch_size
+            hist = []
+            for poi2 in history_pois:#history_size
+                hist.append(dist(poi1, poi2))
+            target_dist.append(hist)
         target_dist=torch.tensor(target_dist,dtype=torch.float32).to(DEVICE)
         prediction = model(user_history, target_list, user_history_region, train_data_region, target_dist)
 
