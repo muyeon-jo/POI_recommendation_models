@@ -55,4 +55,4 @@ def NAIS_region_distance_validation(model, args,num_users, positive, negative, t
     precision, recall, hit = eval_metrics.evaluate_mp(positive,recommended_list,k_list,val_flag)
             
 
-    return recall , precision, hit
+    return precision, recall , hit
