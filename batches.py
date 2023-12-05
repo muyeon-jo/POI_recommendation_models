@@ -5,6 +5,7 @@ import torch
 
 def get_BPR_batch(X, test_negative, num_poi, batch_user_index):
     DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    # DEVICE = 'cpu'
     batch = []
     item_list = np.arange(num_poi).tolist()
     for uid in batch_user_index:
@@ -23,6 +24,7 @@ def get_BPR_batch(X, test_negative, num_poi, batch_user_index):
 
 def get_NAIS_batch(train_matrix,test_negative, num_poi, uid, negative_num):
     DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    # DEVICE = 'cpu'
     batch = []
     item_list = np.arange(num_poi).tolist()
 
@@ -47,6 +49,7 @@ def get_NAIS_batch(train_matrix,test_negative, num_poi, uid, negative_num):
 
 def get_NAIS_batch_test(train_matrix, test_positive, test_negative, uid):
     DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    # DEVICE = 'cpu'
     batch = []
     history = train_matrix.getrow(uid).indices.tolist()
     negative = test_negative[uid]
@@ -66,6 +69,7 @@ def get_NAIS_batch_test(train_matrix, test_positive, test_negative, uid):
 
 def get_NAIS_batch_region(train_matrix,test_negative, num_poi, uid, negative_num, businessRegionEmbedList):
     DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    # DEVICE = 'cpu'
     batch = []
     item_list = np.arange(num_poi).tolist()
 
@@ -107,6 +111,7 @@ def get_NAIS_batch_region(train_matrix,test_negative, num_poi, uid, negative_num
 
 def get_NAIS_batch_test_region(train_matrix, test_positive, test_negative, uid, businessRegionEmbedList):
     DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    # DEVICE = 'cpu'
     batch = [] 
     history = train_matrix.getrow(uid).indices.tolist()
     negative = test_negative[uid]

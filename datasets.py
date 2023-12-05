@@ -105,6 +105,40 @@ def train_test_split_with_time(place_list, freq_list, time_list, test_size):
         train_freq.append(i[2])
 
     return train_place, test_place, train_freq, test_freq
+def train_test_val_split_with_time(place_list, freq_list, time_list, test_size, val_size):
+    li = []
+    for i in range(len(place_list)):
+        li.append((place_list[i], time_list[i], freq_list[i]))
+    li.sort(key=lambda x:-x[1])
+    test = li[:int(len(li)*test_size)]
+    train_ = li[int(len(li)*test_size):]
+
+    val_num = int(len(li)*val_size)
+    if val_num == 0:
+        val_num=1
+    val = train_[:val_num]
+    train = train_[val_num:]
+
+    random.shuffle(train)
+    test_place = []
+    test_freq = []
+    for i in test:
+        test_place.append(i[0])
+        test_freq.append(i[1])
+
+    train_place=[]
+    train_freq=[]
+    for i in train:
+        train_place.append(i[0])
+        train_freq.append(i[1])
+
+    val_place = []
+    val_freq = []
+
+    for i in val:
+        val_place.append(i[0])
+        val_freq.append(i[1])
+    return train_place, test_place, val_place, train_freq, test_freq, val_freq
 def get_region_num(path):
     input_file = 'poi_region.txt'
     output_file = 'poi_region_sorted.txt'
@@ -323,7 +357,7 @@ class Dataset(object):
             uid, lid, time = eachline.strip().split()
             uid, lid, time = int(uid), int(lid), float(time)
             sparse_raw_matrix[uid, lid] = sparse_raw_matrix[uid, lid] + 1
-            if sparse_raw_time_matrix[uid,lid] ==0 or sparse_raw_time_matrix[uid,lid] >= time:
+            if sparse_raw_time_matrix[uid,lid] < time:
                 sparse_raw_time_matrix[uid, lid] = time
         return sparse_raw_matrix.tocsr(), sparse_raw_time_matrix.tocsr()
 
@@ -341,9 +375,9 @@ class Dataset(object):
             place_list = raw_matrix.getrow(user_id).indices
             freq_list = raw_matrix.getrow(user_id).data
             time_list = time_matrix.getrow(user_id).data
-            # train_place, test_place, train_freq, test_freq = train_test_split(place_list, freq_list, test_size=test_size, random_state=random_seed)
+            train_place, test_place, val_place, train_freq, test_freq, val_freq = train_test_val_split_with_time(place_list, freq_list, time_list, test_size, val_size)
             # train_place, test_place, train_freq, test_freq = train_test_split_with_time(place_list, freq_list, time_list, test_size)
-            train_place, test_place, val_place, train_freq, test_freq, val_freq = train_test_val_split(place_list, freq_list, test_size, val_size)
+            # train_place, test_place, val_place, train_freq, test_freq, val_freq = train_test_val_split(place_list, freq_list, test_size, val_size)
             for i in range(len(train_place)):
                 train_matrix[user_id, train_place[i]] = train_freq[i]
             test_positive.append(test_place)

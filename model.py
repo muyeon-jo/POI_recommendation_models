@@ -189,12 +189,8 @@ class NAIS_regionEmbedding(nn.Module):
         h: history size (h * 5 = item_num = batch_size)
         d: embedding size
         """
-        #print("########################### def attention network start ##################################")
-        #print(len(user_history), user_history)
-        #print(len(target_item), target_item)
-
-        history_ = self.embed_history(user_history) # (b * d)
-        region = self.embed_region(history_region) # 
+        """history_ = self.embed_history(user_history) # (b * d)
+        region = self.embed_region(history_region)
         history = torch.cat((history_, region), -1)
         
         target_ = self.embed_target(target_item) # (b * d)
@@ -223,10 +219,37 @@ class NAIS_regionEmbedding(nn.Module):
         target = target.reshape([batch_dim,-1,1]) # (b * d * 1)
 
         prediction = torch.bmm(result, target).squeeze(dim=-1) # (b * b * 1) -> (b * b)
-        prediction = torch.sum(prediction, dim = -1) # (b)
+        prediction = torch.sum(prediction, dim = -1) # (b)"""
         
-        #print(f"#### return prediction {prediction.shape},{prediction}")
-        #print("########################### def attention network end ##################################")
+        history_ = self.embed_history(user_history) # (b * n * d)
+        region = self.embed_region(history_region) # (b * n * d)
+        history = torch.cat((history_, region), -1)
+
+        target_ = self.embed_target(target_item) # (b * 1 * d)
+        target_region_ = self.embed_region(target_region) # (b * 1 * d)
+        target = torch.cat((target_, target_region_),-1)
+
+        batch_dim = len(target)
+        target = torch.reshape(target,(batch_dim, 1,-1))
+        input = history * target # (b * n * d)
+        result1 = self.relu(self.attn_layer1(input)) # (n * d)
+        
+        result2 = self.attn_layer2(result1) # (n * 1) 
+        
+        exp_A = torch.exp(result2) # (b * n * 1)
+        exp_A = exp_A.squeeze(dim=-1)# (b * n )
+        mask = self.get_mask(user_history,target_item)
+        exp_A = exp_A * mask
+        exp_sum = torch.sum(exp_A,dim=-1) # (b * 1)
+        exp_sum = torch.pow(exp_sum, self.beta) # (b * 1)
+        
+        attn_weights = torch.divide(exp_A.T,exp_sum).T # (b * n)
+        attn_weights = attn_weights.reshape([batch_dim,-1, 1])# (b * n * 1)
+        result = history * attn_weights# (b * n * d)
+        target = target.reshape([batch_dim,-1,1]) # (b * d * 1)
+        
+        prediction = torch.bmm(result, target).squeeze(dim=-1) # (b * n * 1) -> (b * n)
+        prediction = torch.sum(prediction, dim = -1) # (b)
         return prediction
 
     def get_mask(self, user_history, target_item):
@@ -240,6 +263,7 @@ class NAIS_region_distance_Embedding(nn.Module):
     def __init__(self, item_num, embed_size, hidden_size, beta, region_embed_size, dist_embed_size): # embed_size : 64, beta : 0.5, region_embed_size : 152 dist_embed_size : 1
         super(NAIS_region_distance_Embedding, self).__init__()
         self.DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        # self.DEVICE = 'cpu'
         self.embed_size = embed_size # concat 연산 시 * 2
         self.item_num = item_num
         self.beta = beta
@@ -351,6 +375,7 @@ class NAIS_distance_Embedding(nn.Module):
     def __init__(self, item_num, embed_size, hidden_size, beta, region_embed_size, dist_embed_size): # embed_size : 64, beta : 0.5, region_embed_size : 152 dist_embed_size : 1
         super(NAIS_distance_Embedding, self).__init__()
         self.DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        # self.DEVICE = 'cpu'
         self.embed_size = embed_size # concat 연산 시 * 2
         self.item_num = item_num
         self.beta = beta
@@ -380,7 +405,7 @@ class NAIS_distance_Embedding(nn.Module):
             if isinstance(m, nn.Linear) and m.bias is not None:
                 m.bias.data.zero_()
 
-    def forward(self, history, target, history_region, target_distance):
+    def forward(self, history, target, history_region, target_region, target_distance):
         #배치 사이즈만큼 잘라서 넣어줌
         #print(len(history), len(target))
         history_tensor = history
@@ -450,6 +475,7 @@ class NAIS_region_distance_disentangled_Embedding(nn.Module):
     def __init__(self, item_num, embed_size, hidden_size, beta, region_embed_size, dist_embed_size): # embed_size : 64, beta : 0.5, region_embed_size : 152 dist_embed_size : 1
         super(NAIS_region_distance_disentangled_Embedding, self).__init__()
         self.DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        # self.DEVICE = 'cpu'
         self.embed_size = embed_size # concat 연산 시 * 2
         self.item_num = item_num
         self.beta = beta
