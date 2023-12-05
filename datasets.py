@@ -14,7 +14,7 @@ def get_region(place_coords,size,path):
     longitude_max = -55000
     longitude_min = 55000
     places = []
-    for lid in range(len(place_coords)):
+    for lid in range(len(place_coords)): # lat, long의 min, max 구하기
         now_lat = place_coords[lid][0]
         now_lng = place_coords[lid][1]
         latitude_min = min(latitude_min, now_lat)
@@ -27,6 +27,7 @@ def get_region(place_coords,size,path):
     print("lat_max:{latmax} lat_min:{latmin}".format(latmax=latitude_max, latmin=latitude_min))
     print("lng_max:{lngmax} lng_min:{lngmin}".format(lngmax=longitude_max, lngmin=longitude_min))
 
+    #사다리꼴 모양에서 윗변, 아랫변, 좌우 높이 구하기
     width1 = haversine((latitude_max,longitude_max),(latitude_max,longitude_min), unit="m")
     width2 = haversine((latitude_min,longitude_max),(latitude_min,longitude_min), unit="m")
     
@@ -37,46 +38,53 @@ def get_region(place_coords,size,path):
     colnum = int((width2+width1)/2/size)
     rownum = int(height1/size)
     print("row: {} col: {}".format(rownum, colnum))
-    delta = (longitude_max - longitude_min)/colnum
-    areaRangeArr = np.zeros((rownum, colnum, 4))
+    alpha = (latitude_max - latitude_min)/rownum # 가로 한칸단 좌표 크기
+    delta = (longitude_max - longitude_min)/colnum # 세로 한칸당 좌표 크기
+    areaRangeArr = np.zeros((rownum, colnum, 4)) # 지역 임베딩을 매트릭스로 표현
     areaBusinessArr = dict()
-    for i in range(rownum):
+    for i in range(rownum): # 각 매트릭스 인덱스별로 dict형식의 lat,long 을 저장하기 위한 dict 선언
         areaBusinessArr[i]=dict()
         for j in range(colnum):
             areaBusinessArr[i][j]=dict()
 
-    place_region = np.zeros([len(place_coords)])-1
+    place_region = np.zeros([len(place_coords)])-1 #지역 임베딩을 저장할 array
     for i in range(rownum):
         print("row{}".format(i))
-        lat_min = latitude_min + (latitude_max - latitude_min)/rownum*(i)
-        lat_max = latitude_min + (latitude_max - latitude_min)/rownum*(i+1)
-        target = [x for x in places if x[1]>=lat_min and x[1]<=lat_max]
+        lat_min = latitude_min + alpha * (i) # lat 한칸의 시작 좌표, 위 delta처럼 alpha?로 지정해서 계산해도 될듯 ?
+        lat_max = latitude_min + alpha * (i+1) # lat 한칸의 끝나는 좌표
+        target = [x for x in places if x[1]>=lat_min and x[1]<=lat_max] # poi 좌표들 중 위 latitude 조건에 만족하는 poi들의 모음
         for j in range(colnum):
-            lng_min = longitude_min + delta * j
-            lng_max = longitude_min + delta * (j+1)
+            lng_min = longitude_min + delta * j # long 한칸의 시작 좌표
+            lng_max = longitude_min + delta * (j+1) #long 한칸의 끝나는 좌표
 
+            # 구역을 나누는 좌표 저장
             areaRangeArr[i][j][0] = lat_min
             areaRangeArr[i][j][1] = lat_max
             areaRangeArr[i][j][2] = lng_min
             areaRangeArr[i][j][3] = lng_max
 
-            for lid in target:
-                if place_region[lid[0]]>=0:
+            for lid in target: # 각 poi에 대하여, 이때 poi는 위 lat 좌표 안에 있는 poi들
+                if place_region[lid[0]]>=0: # 이미 region이 정해진 지역에 대해서는 pass
                     continue
-                now_lat = place_coords[lid[0]][0]
+                
+                now_lat = place_coords[lid[0]][0] # 여기 바로 lid[1] 해도 될듯 ?
                 now_lng = place_coords[lid[0]][1]
-                if j == colnum-1 and i == rownum-1:
-                    if now_lng<=lng_max and now_lat <= lat_max:
-                        place_region[lid[0]] = colnum*i + j
-                    
+                if (now_lng<lng_max ) and (now_lat < lat_max):
+                    place_region[lid[0]] = colnum*i + j 
+                    print(f"if1 !!!!, {colnum * i + j}")
+                elif j == colnum-1 and i == rownum-1: # 맨 마지막 좌표일 때 (20,20)
+                    if now_lng<=lng_max and now_lat <= lat_max: # 안쪽에 걸친다면
+                        place_region[lid[0]] = colnum*i + j # 
+                        print("if !!!!")
                 elif j == colnum-1:
                     if now_lng<=lng_max and now_lat < lat_max:
                         place_region[lid[0]] = colnum*i + j
-
+                        print(f"elif1 !!!!, {colnum * i + j}")
                 elif i == rownum-1:
                     if now_lng < lng_max and now_lat <= lat_max:
                         place_region[lid[0]] = colnum*i + j
-
+                        print(f"elif2 !!!!, {colnum * i + j}")
+                
     f= open(path+"poi_region.txt","w")
     for i in range(len(place_region)):
         f.write("{}\t{}\n".format(i,int(place_region[i])))
