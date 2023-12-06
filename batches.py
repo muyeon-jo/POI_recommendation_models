@@ -5,7 +5,6 @@ import torch
 
 def get_BPR_batch(X, test_negative, num_poi, batch_user_index):
     DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    # DEVICE = 'cpu'
     batch = []
     item_list = np.arange(num_poi).tolist()
     for uid in batch_user_index:
@@ -24,7 +23,6 @@ def get_BPR_batch(X, test_negative, num_poi, batch_user_index):
 
 def get_NAIS_batch(train_matrix,test_negative, num_poi, uid, negative_num):
     DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    # DEVICE = 'cpu'
     batch = []
     item_list = np.arange(num_poi).tolist()
 
@@ -49,7 +47,6 @@ def get_NAIS_batch(train_matrix,test_negative, num_poi, uid, negative_num):
 
 def get_NAIS_batch_test(train_matrix, test_positive, test_negative, uid):
     DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    # DEVICE = 'cpu'
     batch = []
     history = train_matrix.getrow(uid).indices.tolist()
     negative = test_negative[uid]
@@ -69,7 +66,6 @@ def get_NAIS_batch_test(train_matrix, test_positive, test_negative, uid):
 
 def get_NAIS_batch_region(train_matrix,test_negative, num_poi, uid, negative_num, businessRegionEmbedList):
     DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    # DEVICE = 'cpu'
     batch = []
     item_list = np.arange(num_poi).tolist()
 
@@ -111,7 +107,6 @@ def get_NAIS_batch_region(train_matrix,test_negative, num_poi, uid, negative_num
 
 def get_NAIS_batch_test_region(train_matrix, test_positive, test_negative, uid, businessRegionEmbedList):
     DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    # DEVICE = 'cpu'
     batch = [] 
     history = train_matrix.getrow(uid).indices.tolist()
     negative = test_negative[uid]
@@ -144,4 +139,54 @@ def get_NAIS_batch_test_region(train_matrix, test_positive, test_negative, uid, 
     train_data_region=torch.LongTensor(train_data_region).to(DEVICE)
     
     return user_history, train_data, train_label, user_history_region, train_data_region
+
+
+def get_NAIS_batch_speed_up(train_matrix,test_negative, num_poi, uid, negative_num):
+    DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    item_list = np.arange(num_poi).tolist()
+
+    positives = train_matrix.getrow(uid).indices.tolist()
+    random.shuffle(positives)
+    histories = np.array([positives]).repeat(len(positives)*(negative_num+1))
+
+    negative = list(set(item_list)-set(positives) - set(test_negative[uid]))
+    random.shuffle(negative)
+
+    negative = negative[:len(positives)*negative_num]
+    negatives = np.array(negative).reshape([-1,negative_num])
+
+    a= np.array(positives).reshape(-1,1)
+    data = np.concatenate((a, negatives),axis=-1)
+    data = data.reshape(-1)
+
+    positive_label = np.array([1]).repeat(len(positives)).reshape(-1,1)
+    negative_label = np.array([0]).repeat(negative_num).reshape(-1,negative_num)
+    labels = np.concatenate((positive_label,negative_label),axis=-1).reshape(-1)
+
+    user_history = torch.LongTensor(histories).to(DEVICE)
+    train_data = torch.LongTensor(data).to(DEVICE)
+    train_label = torch.tensor(labels,dtype=torch.float32).to(DEVICE)
+
+    return user_history, train_data, train_label
+
+def get_NAIS_batch_test_speed_up(train_matrix, test_positive, test_negative, uid):
+    DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    batch = []
+    history = train_matrix.getrow(uid).indices.tolist()
+    negative = test_negative[uid]
+    positive = test_positive[uid]
+    histories = np.array([history]).repeat(len(positive)+len(negative))
+
+    data = np.concatenate((negative,positive))
+
+    positive_label = np.array([1]).repeat(len(positive))
+    negative_label = np.array([0]).repeat(len(negative))
+    labels = np.concatenate((negative_label,positive_label))
+
+    batch = np.array(batch,dtype=object).T
+    user_history = torch.LongTensor(histories).to(DEVICE)
+    train_data = torch.LongTensor(data).to(DEVICE)
+    train_label = torch.tensor(labels, dtype=torch.float32).to(DEVICE)
+
+    return user_history, train_data, train_label
 
