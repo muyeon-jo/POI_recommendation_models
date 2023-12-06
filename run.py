@@ -47,7 +47,7 @@ class Args:
         self.lr = 0.01 # learning rate
         self.lamda = 0.00 # model regularization rate
         self.batch_size = 4096 # batch size for training
-        self.epochs = 50 # training epoches
+        self.epochs = 201 # training epoches
         self.topk = 50 # compute metrics@top_k
         self.factor_num = 64 # predictive factors numbers in the model
         self.region_embed_size=152
@@ -404,8 +404,8 @@ def train_NAIS_distance(train_matrix, test_positive, test_negative, val_positive
 
 def train_BPR(train_matrix, test_positive, test_negative, val_positive, val_negative, dataset):
     now = datetime.now()
-    model_directory = "./model/",now.strftime('%Y-%m-%d %H:%M:%S')
-    result_directory = "./result/",now.strftime('%Y-%m-%d %H:%M:%S')
+    model_directory = "./model/"+now.strftime('%Y-%m-%d %H_%M_%S')+"BPR"
+    result_directory = "./result/"+now.strftime('%Y-%m-%d %H_%M_%S')+"BPR"
     if not os.path.exists(model_directory):
         os.makedirs(model_directory)
     if not os.path.exists(result_directory):
@@ -454,55 +454,75 @@ def train_BPR(train_matrix, test_positive, test_negative, val_positive, val_nega
         elapsed_time = time.time() - start_time  # 소요시간 계산
         print(lo)
         print(f"Epoch : {epoch}, Used_Time : {elapsed_time}")
-
-        if epoch % 20==0:
+        if epoch %20 == 0:
             model.eval() # 모델을 평가 모드로 설정
-            k_list=[5, 10, 15, 20,25,30]
-            alpha = args.powerlaw_weight
+            with torch.no_grad():
+                start_time = int(time.time())
+                val_precision, val_recall, val_hit = val.BPR_validation(model,args,num_users,val_positive,val_negative,True,[10])
+                end_time = int(time.time())
+                print("eval time: {} sec".format(end_time-start_time))
+                if(max_recall < val_recall[0]):
+                    max_recall = val_recall[0]
+                    torch.save(model, model_directory+"/model")
+                    alpha = args.powerlaw_weight
 
-            recommended_list = []
-            recommended_list_g = []
-            for user_id in range(num_users):
-                user_tensor = torch.LongTensor([user_id] * (len(test_negative[user_id])+len(test_positive[user_id]))).to(DEVICE)
-                target_list = test_negative[user_id]+test_positive[user_id]
-                target_tensor = torch.LongTensor(target_list).to(DEVICE)
+                    recommended_list = []
+                    recommended_list_g = []
+                    for user_id in range(num_users):
+                        user_tensor = torch.LongTensor([user_id] * (len(test_negative[user_id])+len(test_positive[user_id]))).to(DEVICE)
+                        target_list = test_negative[user_id]+test_positive[user_id]
+                        target_tensor = torch.LongTensor(target_list).to(DEVICE)
 
-                prediction, _ = model(user_tensor, target_tensor,target_tensor)
+                        prediction, _ = model(user_tensor, target_tensor,target_tensor)
 
-                _, indices = torch.topk(prediction, args.topk)
-                recommended_list.append([target_list[i] for i in indices])
+                        _, indices = torch.topk(prediction, args.topk)
+                        recommended_list.append([target_list[i] for i in indices])
 
-                G_score = normalize([G.predict(user_id,poi_id) for poi_id in target_list])
-                G_score = torch.tensor(np.array(G_score)).to(DEVICE)
-                prediction = (1-alpha)*prediction + alpha * G_score
+                        G_score = normalize([G.predict(user_id,poi_id) for poi_id in target_list])
+                        G_score = torch.tensor(np.array(G_score)).to(DEVICE)
+                        prediction = (1-alpha)*prediction + alpha * G_score
 
-                _, indices = torch.topk(prediction, args.topk)
-                recommended_list_g.append([target_list[i] for i in indices])
+                        _, indices = torch.topk(prediction, args.topk)
+                        recommended_list_g.append([target_list[i] for i in indices])
 
 
-            precision, recall, hit = eval_metrics.evaluate_mp(test_positive,recommended_list,k_list)
-            precision_g, recall_g, hit_g = eval_metrics.evaluate_mp(test_positive,recommended_list_g,k_list)
+                    precision, recall, hit = eval_metrics.evaluate_mp(test_positive,recommended_list,k_list)
+                    precision_g, recall_g, hit_g = eval_metrics.evaluate_mp(test_positive,recommended_list_g,k_list)
+                    f=open(result_directory+"/results.txt","w")
+                    f.write("epoch:{}\n".format(epoch))
+                    f.write("@k: " + str(k_list)+"\n")
+                    f.write("prec:" + str(precision)+"\n")
+                    f.write("recall:" + str(recall)+"\n")
+                    f.write("hit:" + str(hit)+"\n")
+
+                    f.write("distance weight: {}\n".format(alpha))
+
+                    f.write("prec:" + str(precision_g)+"\n")
+                    f.write("recall:" + str(recall_g)+"\n")
+                    f.write("hit:" + str(hit_g)+"\n")
+                    f.close()
 
 
 def main():
     print("data loading")
-    # dataset_ = datasets.Dataset(3921,10768,"./data/Tokyo/")
-    # train_matrix, test_positive, test_negative, val_positive, val_negative, place_coords = dataset_.generate_data(0)
-    # pickle_save((train_matrix, test_positive, test_negative, val_positive, val_negative, place_coords,dataset_),"dataset_tokyo.pkl")
-    train_matrix, test_positive, test_negative, val_positive, val_negative, place_coords, dataset_ = pickle_load("dataset_tokyo.pkl")
+    dataset_ = datasets.Dataset(15359,14586,"./data/Yelp/")
+    train_matrix, test_positive, test_negative, val_positive, val_negative, place_coords = dataset_.generate_data(0)
+    pickle_save((train_matrix, test_positive, test_negative, val_positive, val_negative, place_coords,dataset_),"dataset_Yelp.pkl")
+    # train_matrix, test_positive, test_negative, val_positive, val_negative, place_coords, dataset_ = pickle_load("dataset_Yelp.pkl")
     print("train data generated")
-    # datasets.get_region(place_coords,200,dataset_.directory_path)
-    # datasets.get_region_num(dataset_.directory_path)
+    datasets.get_region(place_coords,200,dataset_.directory_path)
+    datasets.get_region_num(dataset_.directory_path)
     print("geo file generated")
     
     G.fit_distance_distribution(train_matrix, place_coords)
     
     print("train start")
     
-    train_NAIS_region_distance(train_matrix, test_positive, test_negative, val_positive, val_negative, dataset_)
+    # train_NAIS_region_distance(train_matrix, test_positive, test_negative, val_positive, val_negative, dataset_)
     # train_NAIS_region_disentangled_distance(train_matrix, test_positive, test_negative, val_positive, val_negative, dataset_)
-    train_NAIS(train_matrix, test_positive, test_negative, val_positive, val_negative, dataset_)
-    train_NAIS_region(train_matrix, test_positive, test_negative, val_positive, val_negative, dataset_)
+    # train_NAIS(train_matrix, test_positive, test_negative, val_positive, val_negative, dataset_)
+    # train_NAIS_region(train_matrix, test_positive, test_negative, val_positive, val_negative, dataset_)
+    train_BPR(train_matrix, test_positive, test_negative, val_positive, val_negative, dataset_)
 
 if __name__ == '__main__':
     G = PowerLaw()

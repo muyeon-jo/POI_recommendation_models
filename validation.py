@@ -66,3 +66,23 @@ def NAIS_region_distance_validation(model, args,num_users, positive, negative, t
             
 
     return precision, recall , hit
+
+def BPR_validation(model, args,num_users, positive, negative,val_flag,k_list):
+    model.eval() # 모델을 평가 모드로 설정
+    DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+    recommended_list = []
+    for user_id in range(num_users):
+        user_tensor = torch.LongTensor([user_id] * (len(negative[user_id])+len(positive[user_id]))).to(DEVICE)
+        target_list = negative[user_id]+positive[user_id]
+        target_tensor = torch.LongTensor(target_list).to(DEVICE)
+
+        prediction, _ = model(user_tensor, target_tensor,target_tensor)
+
+        _, indices = torch.topk(prediction, args.topk)
+        recommended_list.append([target_list[i] for i in indices])
+
+    
+    precision, recall, hit = eval_metrics.evaluate_mp(positive,recommended_list,k_list,val_flag)
+    
+    return precision, recall, hit
