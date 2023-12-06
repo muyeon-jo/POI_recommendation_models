@@ -105,8 +105,7 @@ def train_NAIS(train_matrix, test_positive, test_negative, val_positive, val_neg
         with torch.no_grad():
             start_time = int(time.time())
             val_precision, val_recall, val_hit = val.NAIS_validation(model,args,num_users,val_positive,val_negative,train_matrix,True,[10])
-            end_time = int(time.time())
-            print("eval time: {} sec".format(end_time-start_time))
+            
             if(max_recall < val_recall[0]):
                 max_recall = val_recall[0]
                 torch.save(model, model_directory+"/model")
@@ -118,6 +117,8 @@ def train_NAIS(train_matrix, test_positive, test_negative, val_positive, val_neg
                 f.write("recall:" + str(recall)+"\n")
                 f.write("hit:" + str(hit)+"\n")
                 f.close()
+            end_time = int(time.time())
+            print("eval time: {} sec".format(end_time-start_time))
 def train_NAIS_region(train_matrix, test_positive, test_negative, val_positive, val_negative, dataset):
 
     now = datetime.now()
@@ -168,8 +169,7 @@ def train_NAIS_region(train_matrix, test_positive, test_negative, val_positive, 
         with torch.no_grad():
             start_time = int(time.time())
             val_precision, val_recall, val_hit = val.NAIS_region_validation(model,args,num_users,val_positive,val_negative,train_matrix,businessRegionEmbedList,True,[10])
-            end_time = int(time.time())
-            print("eval time: {} sec".format(end_time-start_time))
+            
             if(max_recall < val_recall[0]):
                 max_recall = val_recall[0]
                 torch.save(model, model_directory+"/model")
@@ -181,7 +181,8 @@ def train_NAIS_region(train_matrix, test_positive, test_negative, val_positive, 
                 f.write("recall:" + str(recall)+"\n")
                 f.write("hit:" + str(hit)+"\n")
                 f.close()
-
+            end_time = int(time.time())
+            print("eval time: {} sec".format(end_time-start_time))
 def train_NAIS_region_distance(train_matrix, test_positive, test_negative, val_positive, val_negative, dataset):
 
     now = datetime.now()
@@ -220,16 +221,16 @@ def train_NAIS_region_distance(train_matrix, test_positive, test_negative, val_p
             history_pois = [(poi_coos[i][0], poi_coos[i][1]) for i in user_history[0]] # 방문한 데이터
             target_pois = [(poi_coos[i][0], poi_coos[i][1]) for i in train_data] # 타겟 데이터
             
-            target_dist = []
+            target_lat_long = []
             for poi1 in target_pois: #타겟 데이터에 대해서 거리 계산 batch_size
                 hist = []
                 for poi2 in history_pois:#history_size
-                    hist.append(dist(poi1, poi2))
-                target_dist.append(hist)
-            target_dist=torch.tensor(target_dist,dtype=torch.float32).to(DEVICE)
+                    hist.append((abs(poi1[0]-poi2[0]), abs(poi1[1]-poi2[1])))
+                target_lat_long.append(hist)
+            target_lat_long=torch.tensor(target_lat_long,dtype=torch.float32).to(DEVICE)
             optimizer.zero_grad() # 그래디언트 초기화
 
-            prediction = model(user_history, train_data, user_history_region, train_data_region, target_dist)
+            prediction = model(user_history, train_data, user_history_region, train_data_region, target_lat_long)
             loss = model.loss_func(prediction,train_label)
             train_loss += loss.item()
             loss.backward() # 역전파 및 그래디언트 계산
@@ -241,8 +242,7 @@ def train_NAIS_region_distance(train_matrix, test_positive, test_negative, val_p
         with torch.no_grad():
             start_time = int(time.time())
             val_precision, val_recall, val_hit = val.NAIS_region_distance_validation(model,args,num_users,val_positive,val_negative,train_matrix,businessRegionEmbedList, poi_coos,True,[10])
-            end_time = int(time.time())
-            print("eval time: {} sec".format(end_time-start_time))
+            
             if(max_recall < val_recall[0]):
                 max_recall = val_recall[0]
                 torch.save(model, model_directory+"/model")
@@ -254,7 +254,8 @@ def train_NAIS_region_distance(train_matrix, test_positive, test_negative, val_p
                 f.write("recall:" + str(recall)+"\n")
                 f.write("hit:" + str(hit)+"\n")
                 f.close()
-
+            end_time = int(time.time())
+            print("eval time: {} sec".format(end_time-start_time))
 def train_NAIS_region_disentangled_distance(train_matrix, test_positive, test_negative, val_positive, val_negative, dataset):
 
     now = datetime.now()
@@ -314,8 +315,7 @@ def train_NAIS_region_disentangled_distance(train_matrix, test_positive, test_ne
         with torch.no_grad():
             start_time = int(time.time())
             val_precision, val_recall, val_hit = val.NAIS_region_distance_validation(model,args,num_users,val_positive,val_negative,train_matrix,businessRegionEmbedList, poi_coos,True,[10])
-            end_time = int(time.time())
-            print("eval time: {} sec".format(end_time-start_time))
+            
             if(max_recall < val_recall[0]):
                 max_recall = val_recall[0]
                 torch.save(model, model_directory+"/model")
@@ -327,7 +327,8 @@ def train_NAIS_region_disentangled_distance(train_matrix, test_positive, test_ne
                 f.write("recall:" + str(recall)+"\n")
                 f.write("hit:" + str(hit)+"\n")
                 f.close()
-
+            end_time = int(time.time())
+            print("eval time: {} sec".format(end_time-start_time))
 def train_NAIS_distance(train_matrix, test_positive, test_negative, val_positive, val_negative, dataset):
 
     now = datetime.now()
@@ -387,8 +388,7 @@ def train_NAIS_distance(train_matrix, test_positive, test_negative, val_positive
         with torch.no_grad():
             start_time = int(time.time())
             val_precision, val_recall, val_hit = val.NAIS_region_distance_validation(model,args,num_users,val_positive,val_negative,train_matrix,businessRegionEmbedList, poi_coos,True,[10])
-            end_time = int(time.time())
-            print("eval time: {} sec".format(end_time-start_time))
+            
             if(max_recall < val_recall[0]):
                 max_recall = val_recall[0]
                 torch.save(model, model_directory+"/model")
@@ -400,7 +400,8 @@ def train_NAIS_distance(train_matrix, test_positive, test_negative, val_positive
                 f.write("recall:" + str(recall)+"\n")
                 f.write("hit:" + str(hit)+"\n")
                 f.close()
-
+            end_time = int(time.time())
+            print("eval time: {} sec".format(end_time-start_time))
 
 def train_BPR(train_matrix, test_positive, test_negative, val_positive, val_negative, dataset):
     now = datetime.now()
@@ -459,8 +460,7 @@ def train_BPR(train_matrix, test_positive, test_negative, val_positive, val_nega
             with torch.no_grad():
                 start_time = int(time.time())
                 val_precision, val_recall, val_hit = val.BPR_validation(model,args,num_users,val_positive,val_negative,True,[10])
-                end_time = int(time.time())
-                print("eval time: {} sec".format(end_time-start_time))
+                
                 if(max_recall < val_recall[0]):
                     max_recall = val_recall[0]
                     torch.save(model, model_directory+"/model")
@@ -501,14 +501,15 @@ def train_BPR(train_matrix, test_positive, test_negative, val_positive, val_nega
                     f.write("recall:" + str(recall_g)+"\n")
                     f.write("hit:" + str(hit_g)+"\n")
                     f.close()
-
+                end_time = int(time.time())
+                print("eval time: {} sec".format(end_time-start_time))
 
 def main():
     print("data loading")
-    dataset_ = datasets.Dataset(15359,14586,"./data/Yelp/")
+    dataset_ = datasets.Dataset(3725,10768,"./data/Tokyo/")
     train_matrix, test_positive, test_negative, val_positive, val_negative, place_coords = dataset_.generate_data(0)
-    pickle_save((train_matrix, test_positive, test_negative, val_positive, val_negative, place_coords,dataset_),"dataset_Yelp.pkl")
-    # train_matrix, test_positive, test_negative, val_positive, val_negative, place_coords, dataset_ = pickle_load("dataset_Yelp.pkl")
+    pickle_save((train_matrix, test_positive, test_negative, val_positive, val_negative, place_coords,dataset_),"dataset_Tokyo.pkl")
+    train_matrix, test_positive, test_negative, val_positive, val_negative, place_coords, dataset_ = pickle_load("dataset_Tokyo.pkl")
     print("train data generated")
     datasets.get_region(place_coords,200,dataset_.directory_path)
     datasets.get_region_num(dataset_.directory_path)
@@ -518,11 +519,11 @@ def main():
     
     print("train start")
     
-    # train_NAIS_region_distance(train_matrix, test_positive, test_negative, val_positive, val_negative, dataset_)
+    train_NAIS_region_distance(train_matrix, test_positive, test_negative, val_positive, val_negative, dataset_)
     # train_NAIS_region_disentangled_distance(train_matrix, test_positive, test_negative, val_positive, val_negative, dataset_)
-    # train_NAIS(train_matrix, test_positive, test_negative, val_positive, val_negative, dataset_)
-    # train_NAIS_region(train_matrix, test_positive, test_negative, val_positive, val_negative, dataset_)
-    train_BPR(train_matrix, test_positive, test_negative, val_positive, val_negative, dataset_)
+    train_NAIS(train_matrix, test_positive, test_negative, val_positive, val_negative, dataset_)
+    train_NAIS_region(train_matrix, test_positive, test_negative, val_positive, val_negative, dataset_)
+    # train_BPR(train_matrix, test_positive, test_negative, val_positive, val_negative, dataset_)
 
 if __name__ == '__main__':
     G = PowerLaw()
