@@ -44,10 +44,10 @@ def normalize(scores):
     return scores
 class Args:
     def __init__(self):
-        self.lr = 0.01 # learning rate
-        self.lamda = 0.00 # model regularization rate
+        self.lr = 0.1 # learning rate
+        self.lamda = 0.0000 # model regularization rate
         self.batch_size = 4096 # batch size for training
-        self.epochs = 201 # training epoches
+        self.epochs = 100 # training epoches
         self.topk = 50 # compute metrics@top_k
         self.factor_num = 64 # predictive factors numbers in the model
         self.region_embed_size=152
@@ -506,24 +506,24 @@ def train_BPR(train_matrix, test_positive, test_negative, val_positive, val_nega
 
 def main():
     print("data loading")
-    dataset_ = datasets.Dataset(3725,10768,"./data/Tokyo/")
-    train_matrix, test_positive, test_negative, val_positive, val_negative, place_coords = dataset_.generate_data(0)
-    pickle_save((train_matrix, test_positive, test_negative, val_positive, val_negative, place_coords,dataset_),"dataset_Tokyo.pkl")
+    # dataset_ = datasets.Dataset(3725,10768,"./data/Tokyo/")
+    # train_matrix, test_positive, test_negative, val_positive, val_negative, place_coords = dataset_.generate_data(0)
+    # pickle_save((train_matrix, test_positive, test_negative, val_positive, val_negative, place_coords,dataset_),"dataset_Tokyo.pkl")
     train_matrix, test_positive, test_negative, val_positive, val_negative, place_coords, dataset_ = pickle_load("dataset_Tokyo.pkl")
     print("train data generated")
-    datasets.get_region(place_coords,200,dataset_.directory_path)
-    datasets.get_region_num(dataset_.directory_path)
+    # datasets.get_region(place_coords,200,dataset_.directory_path)
+    # datasets.get_region_num(dataset_.directory_path)
     print("geo file generated")
     
     G.fit_distance_distribution(train_matrix, place_coords)
     
     print("train start")
     
-    train_NAIS_region_distance(train_matrix, test_positive, test_negative, val_positive, val_negative, dataset_)
+    # train_NAIS_region_distance(train_matrix, test_positive, test_negative, val_positive, val_negative, dataset_)
     # train_NAIS_region_disentangled_distance(train_matrix, test_positive, test_negative, val_positive, val_negative, dataset_)
-    train_NAIS(train_matrix, test_positive, test_negative, val_positive, val_negative, dataset_)
-    train_NAIS_region(train_matrix, test_positive, test_negative, val_positive, val_negative, dataset_)
-    # train_BPR(train_matrix, test_positive, test_negative, val_positive, val_negative, dataset_)
+    # train_NAIS(train_matrix, test_positive, test_negative, val_positive, val_negative, dataset_)
+    # train_NAIS_region(train_matrix, test_positive, test_negative, val_positive, val_negative, dataset_)
+    train_BPR(train_matrix, test_positive, test_negative, val_positive, val_negative, dataset_)
 
 if __name__ == '__main__':
     G = PowerLaw()
