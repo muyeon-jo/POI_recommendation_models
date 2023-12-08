@@ -289,7 +289,7 @@ class NAIS_region_distance_Embedding(nn.Module):
         history_dim   = len(history[0])
         target = torch.reshape(target,(batch_dim, 1,-1)) # (b * 2d) -> (b * 1 * 2d)
         
-        dist = self.tanh(self.dist_layer(target_lat_long_tensor*1000))
+        dist = self.sigmoid(self.dist_layer(target_lat_long_tensor*1000))
         input = history * target # (b * h * 2d)
         input = torch.cat((input,dist), dim = -1)
         attention_result = self.relu(self.attn_layer1(input)) # (b * h * k)
@@ -341,15 +341,16 @@ class NAIS_distance_Embedding(nn.Module):
         self.hidden_size=hidden_size
         self.embed_history = nn.Embedding(item_num, embed_size) # (m:14586 * d:64), 과거 방문한 데이터(q), 유저별로 각각 하나씩 가져야하나 ?
         self.embed_target = nn.Embedding(item_num, embed_size) # (m:14586 * d:64), 예측 데이터(p)
-        self.embed_distance = nn.Embedding(dist_embed_size, embed_size) # 
         
         self.relu = nn.ReLU()
         self.sigmoid = nn.Sigmoid()
         self.loss_func = nn.BCELoss() # binary cross entropy
 
         # Attention을 위한 MLP Layer 생성
-        self.attn_layer1 = nn.Linear(embed_size, hidden_size)
-        self.attn_layer2 = nn.Linear(hidden_size, 1, bias = False)
+        self.attn_layer1 = nn.Linear(embed_size+ 2, hidden_size + 2)
+        self.attn_layer2 = nn.Linear(hidden_size + 2, 1, bias = False)
+
+        self.dist_layer = nn.Linear(2,2)
 
         self._init_weight_()
 
@@ -357,7 +358,6 @@ class NAIS_distance_Embedding(nn.Module):
         # weight 초기화, 표준편차 : 0.01
         nn.init.normal_(self.embed_history.weight, std=0.01)
         nn.init.normal_(self.embed_target.weight, std=0.01)
-        nn.init.normal_(self.embed_distance.weight, std=0.01)
         
         # bias 초기화
         for m in self.modules():
@@ -371,15 +371,15 @@ class NAIS_distance_Embedding(nn.Module):
         target_tensor = target
         
         
-        history_region_idx = history_region
+        # history_region_idx = history_region
         # target_region_idx = target_region
         
         target_distance_tensor = target_distance
 
-        prediction = self.attention_network(history_tensor,target_tensor, history_region_idx, target_distance_tensor)
+        prediction = self.attention_network(history_tensor,target_tensor, target_distance_tensor)
         return self.sigmoid(prediction)
 
-    def attention_network(self, user_history, target_item, history_region, target_distance):
+    def attention_network(self, user_history, target_item, target_lat_long_tensor):
         """
         b: batch size (= input_item_num)
         h: history size (h * 5 = item_num = batch_size)
@@ -392,16 +392,20 @@ class NAIS_distance_Embedding(nn.Module):
         history_dim   = len(history[0])
         target = torch.reshape(target,(batch_dim, 1,-1)) # (b * 1 * d)
         
-        input = history * target # (b * h * d)
+        # input = history * target # (b * h * d)
+        dist = self.sigmoid(self.dist_layer(target_lat_long_tensor*1000))
+        input = history * target # (b * h * 2d)
+        input = torch.cat((input,dist), dim = -1)
+
         attention_result = self.relu(self.attn_layer1(input)) # (b * h * k)
         attention_result = self.attn_layer2(attention_result) # (b * h * 1)
-        li = np.zeros((batch_dim,history_dim))
-        dist_embedding = self.embed_distance(torch.LongTensor(li).reshape((batch_dim,history_dim)).to(self.DEVICE)) # (b * h * d)
-        target_distance = target_distance.unsqueeze(-1) # (b * h * 1)
-        distance = torch.sum(dist_embedding * target_distance, dim = -1) # (b * h * 1)
-        distance = distance.unsqueeze(-1) # b => b * 1 * 1
+        # li = np.zeros((batch_dim,history_dim))
+        # dist_embedding = self.embed_distance(torch.LongTensor(li).reshape((batch_dim,history_dim)).to(self.DEVICE)) # (b * h * d)
+        # target_distance = target_distance.unsqueeze(-1) # (b * h * 1)
+        # distance = torch.sum(dist_embedding * target_distance, dim = -1) # (b * h * 1)
+        # distance = distance.unsqueeze(-1) # b => b * 1 * 1
         
-        exp_input = attention_result + distance # (b * h * 1)
+        exp_input = attention_result # (b * h * 1)
         
         exp_A = torch.exp(exp_input) # (b * h * 1) 
         exp_A = exp_A.squeeze(dim=-1)# (b * h)

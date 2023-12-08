@@ -44,8 +44,8 @@ def normalize(scores):
     return scores
 class Args:
     def __init__(self):
-        self.lr = 0.1 # learning rate
-        self.lamda = 0.0000 # model regularization rate
+        self.lr = 0.005 # learning rate
+        self.lamda = 0.00001 # model regularization rate
         self.batch_size = 4096 # batch size for training
         self.epochs = 100 # training epoches
         self.topk = 50 # compute metrics@top_k
@@ -367,16 +367,16 @@ def train_NAIS_distance(train_matrix, test_positive, test_negative, val_positive
             history_pois = [(poi_coos[i][0], poi_coos[i][1]) for i in user_history[0]] # 방문한 데이터
             target_pois = [(poi_coos[i][0], poi_coos[i][1]) for i in train_data] # 타겟 데이터
             
-            target_dist = []
+            target_lat_long = []
             for poi1 in target_pois: #타겟 데이터에 대해서 거리 계산 batch_size
                 hist = []
                 for poi2 in history_pois:#history_size
-                    hist.append(dist(poi1, poi2))
-                target_dist.append(hist)
-            target_dist=torch.tensor(target_dist,dtype=torch.float32).to(DEVICE)
+                    hist.append((abs(poi1[0]-poi2[0]), abs(poi1[1]-poi2[1])))
+                target_lat_long.append(hist)
+            target_lat_long=torch.tensor(target_lat_long,dtype=torch.float32).to(DEVICE)
             optimizer.zero_grad() # 그래디언트 초기화
 
-            prediction = model(user_history, train_data, user_history_region, train_data_region, target_dist)
+            prediction = model(user_history, train_data, user_history_region, train_data_region, target_lat_long)
             loss = model.loss_func(prediction,train_label)
             train_loss += loss.item()
             loss.backward() # 역전파 및 그래디언트 계산
@@ -518,12 +518,12 @@ def main():
     G.fit_distance_distribution(train_matrix, place_coords)
     
     print("train start")
-    
-    # train_NAIS_region_distance(train_matrix, test_positive, test_negative, val_positive, val_negative, dataset_)
+    train_NAIS_distance(train_matrix, test_positive, test_negative, val_positive, val_negative, dataset_)
+    train_NAIS_region_distance(train_matrix, test_positive, test_negative, val_positive, val_negative, dataset_)
     # train_NAIS_region_disentangled_distance(train_matrix, test_positive, test_negative, val_positive, val_negative, dataset_)
     # train_NAIS(train_matrix, test_positive, test_negative, val_positive, val_negative, dataset_)
     # train_NAIS_region(train_matrix, test_positive, test_negative, val_positive, val_negative, dataset_)
-    train_BPR(train_matrix, test_positive, test_negative, val_positive, val_negative, dataset_)
+    # train_BPR(train_matrix, test_positive, test_negative, val_positive, val_negative, dataset_)
 
 if __name__ == '__main__':
     G = PowerLaw()

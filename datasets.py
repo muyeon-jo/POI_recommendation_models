@@ -71,19 +71,15 @@ def get_region(place_coords,size,path):
                 now_lng = place_coords[lid[0]][1]
                 if (now_lng<lng_max ) and (now_lat < lat_max):
                     place_region[lid[0]] = colnum*i + j 
-                    print(f"if1 !!!!, {colnum * i + j}")
                 elif j == colnum-1 and i == rownum-1: # 맨 마지막 좌표일 때 (20,20)
                     if now_lng<=lng_max and now_lat <= lat_max: # 안쪽에 걸친다면
                         place_region[lid[0]] = colnum*i + j # 
-                        print("if !!!!")
                 elif j == colnum-1:
                     if now_lng<=lng_max and now_lat < lat_max:
                         place_region[lid[0]] = colnum*i + j
-                        print(f"elif1 !!!!, {colnum * i + j}")
                 elif i == rownum-1:
                     if now_lng < lng_max and now_lat <= lat_max:
                         place_region[lid[0]] = colnum*i + j
-                        print(f"elif2 !!!!, {colnum * i + j}")
                 
     f= open(path+"poi_region.txt","w")
     for i in range(len(place_region)):
