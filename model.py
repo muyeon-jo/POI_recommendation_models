@@ -289,7 +289,7 @@ class NAIS_region_distance_Embedding(nn.Module):
         history_dim   = len(history[0])
         target = torch.reshape(target,(batch_dim, 1,-1)) # (b * 2d) -> (b * 1 * 2d)
         
-        dist = self.sigmoid(self.dist_layer(target_lat_long_tensor*1000))
+        dist = self.sigmoid(self.dist_layer(target_lat_long_tensor*100))
         input = history * target # (b * h * 2d)
         input = torch.cat((input,dist), dim = -1)
         attention_result = self.relu(self.attn_layer1(input)) # (b * h * k)
