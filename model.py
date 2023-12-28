@@ -222,12 +222,12 @@ class NAIS_region_distance_Embedding(nn.Module):
         self.item_num = item_num
         self.beta = beta
         self.hidden_size=hidden_size
-        self.embed_history = nn.Embedding(item_num, embed_size) # (m:14586 * d:64), 과거 방문한 데이터(q), 유저별로 각각 하나씩 가져야하나 ?
-        self.embed_target = nn.Embedding(item_num, embed_size) # (m:14586 * d:64), 예측 데이터(p)
+        self.embed_history = nn.Embedding(item_num, int(embed_size/2)) # (m:14586 * d:64), 과거 방문한 데이터(q), 유저별로 각각 하나씩 가져야하나 ?
+        self.embed_target = nn.Embedding(item_num, int(embed_size/2)) # (m:14586 * d:64), 예측 데이터(p)
         # with open(".\data\Yelp\poi_region_sorted.txt", 'r') as file:
         #     # 모든 행을 읽어와서 첫 번째 열만 리스트로 변환
         #     loaded_embed = [int(line.split('\t')[1].strip()) for line in file.readlines()]
-        self.embed_region = nn.Embedding(region_embed_size, embed_size) # 
+        self.embed_region = nn.Embedding(region_embed_size, int(embed_size/2)) # 
         self.embed_distance = nn.Embedding(dist_embed_size, embed_size) # 
         
         self.relu = nn.ReLU()
@@ -236,8 +236,8 @@ class NAIS_region_distance_Embedding(nn.Module):
         self.loss_func = nn.BCELoss() # binary cross entropy
 
         # Attention을 위한 MLP Layer 생성
-        self.attn_layer1 = nn.Linear(embed_size * 2 + 2, hidden_size + 2)
-        self.attn_layer2 = nn.Linear(hidden_size + 2, 1, bias = False)
+        self.attn_layer1 = nn.Linear(embed_size + 2, hidden_size)
+        self.attn_layer2 = nn.Linear(hidden_size, 1, bias = False)
 
         self.dist_layer = nn.Linear(2,2)
 

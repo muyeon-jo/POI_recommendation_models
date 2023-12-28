@@ -44,10 +44,10 @@ def normalize(scores):
     return scores
 class Args:
     def __init__(self):
-        self.lr = 0.03# learning rate
-        self.lamda = 0.0000 # model regularization rate
+        self.lr = 0.001# learning rate
+        self.lamda = 0.000001 # model regularization rate
         self.batch_size = 4096 # batch size for training
-        self.epochs = 30 # training epoches
+        self.epochs = 40 # training epoches
         self.topk = 50 # compute metrics@top_k
         self.factor_num = 64 # predictive factors numbers in the model
         self.region_embed_size=152
@@ -204,7 +204,7 @@ def train_NAIS_region_distance(train_matrix, test_positive, test_negative, val_p
         # 모든 행을 읽어와서 첫 번째 열만 리스트로 변환
         businessRegionEmbedList = [int(line.split('\t')[1].strip()) for line in file.readlines()]
 
-    model = NAIS_region_distance_Embedding(num_items, args.factor_num, args.factor_num*2, args.beta, region_num,1).to(DEVICE)
+    model = NAIS_region_distance_Embedding(num_items, args.factor_num, args.factor_num, args.beta, region_num,1).to(DEVICE)
 
     # 옵티마이저 생성 (adagrad 사용)
     optimizer = torch.optim.Adagrad(model.parameters(), lr=args.lr, weight_decay=args.lamda)
@@ -519,12 +519,12 @@ def main():
     
     print("train start")
     # train_NAIS_distance(train_matrix, test_positive, test_negative, val_positive, val_negative, dataset_)
-    # train_NAIS_region_distance(train_matrix, test_positive, test_negative, val_positive, val_negative, dataset_)
+    train_NAIS_region_distance(train_matrix, test_positive, test_negative, val_positive, val_negative, dataset_)
     # train_NAIS_region_disentangled_distance(train_matrix, test_positive, test_negative, val_positive, val_negative, dataset_)
     
     # train_NAIS_region(train_matrix, test_positive, test_negative, val_positive, val_negative, dataset_)
-    # train_NAIS(train_matrix, test_positive, test_negative, val_positive, val_negative, dataset_)
-    train_BPR(train_matrix, test_positive, test_negative, val_positive, val_negative, dataset_)
+    train_NAIS(train_matrix, test_positive, test_negative, val_positive, val_negative, dataset_)
+    # train_BPR(train_matrix, test_positive, test_negative, val_positive, val_negative, dataset_)
 
 if __name__ == '__main__':
     G = PowerLaw()
