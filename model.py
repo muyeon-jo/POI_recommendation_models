@@ -99,10 +99,10 @@ class NAIS_regionEmbedding(nn.Module):
         self.item_num = item_num
         self.beta = beta
         self.hidden_size=hidden_size
-        self.embed_history = nn.Embedding(item_num, embed_size) # (m:14586 * d:64), 과거 방문한 데이터(q), 유저별로 각각 하나씩 가져야하나 ?
-        self.embed_target = nn.Embedding(item_num, embed_size) # (m:14586 * d:64), 예측 데이터(p)
+        self.embed_history = nn.Embedding(item_num, int(embed_size/2)) # (m:14586 * d:64), 과거 방문한 데이터(q), 유저별로 각각 하나씩 가져야하나 ?
+        self.embed_target = nn.Embedding(item_num, int(embed_size/2)) # (m:14586 * d:64), 예측 데이터(p)
         
-        self.embed_region = nn.Embedding(region_embed_size, embed_size) # 
+        self.embed_region = nn.Embedding(region_embed_size, int(embed_size/2)) # 
 
         self.relu = nn.ReLU()
         self.sigmoid = nn.Sigmoid()
@@ -143,37 +143,6 @@ class NAIS_regionEmbedding(nn.Module):
         h: history size (h * 5 = item_num = batch_size)
         d: embedding size
         """
-        """history_ = self.embed_history(user_history) # (b * d)
-        region = self.embed_region(history_region)
-        history = torch.cat((history_, region), -1)
-        
-        target_ = self.embed_target(target_item) # (b * d)
-        target_region_ = self.embed_region(target_region)
-        target =  torch.cat((target_, target_region_),-1)
-        
-        batch_dim = len(target) # (b)
-        
-        target = torch.reshape(target,(batch_dim, 1,-1))
-        input = history * target # (b*d) * (b*1*d) => (b * b * d)
-
-        attention_result = self.relu(self.attn_layer1(input)) # (b * b * d)
-        attention_result = self.attn_layer2(attention_result) # (b * b * 1) => 여기서 갑자기 왜 다 같은값 되노?
-
-        exp_A = torch.exp(attention_result) # (b * b * 1) 
-        exp_A = exp_A.squeeze(dim=-1)# (b * b)
-
-        mask = self.get_mask(user_history,target_item) # (b * b)
-        exp_A = exp_A * mask # (b * b)
-        exp_sum = torch.sum(exp_A,dim=-1) # (b)
-        exp_sum = torch.pow(exp_sum, self.beta) # (b)
-
-        attn_weights = torch.divide(exp_A.T,exp_sum).T # (b * b)
-        attn_weights = attn_weights.reshape([batch_dim,-1, 1])# (b * b * 1)
-        result = history * attn_weights# (b * b * d) => 여기서 갑자기 왜 0번 인덱스는 0000??
-        target = target.reshape([batch_dim,-1,1]) # (b * d * 1)
-
-        prediction = torch.bmm(result, target).squeeze(dim=-1) # (b * b * 1) -> (b * b)
-        prediction = torch.sum(prediction, dim = -1) # (b)"""
         
         history_ = self.embed_history(user_history) # (b * n * d)
         region = self.embed_region(history_region) # (b * n * d)
@@ -347,8 +316,8 @@ class NAIS_distance_Embedding(nn.Module):
         self.loss_func = nn.BCELoss() # binary cross entropy
 
         # Attention을 위한 MLP Layer 생성
-        self.attn_layer1 = nn.Linear(embed_size+ 2, hidden_size + 2)
-        self.attn_layer2 = nn.Linear(hidden_size + 2, 1, bias = False)
+        self.attn_layer1 = nn.Linear(embed_size+ 2, hidden_size)
+        self.attn_layer2 = nn.Linear(hidden_size, 1, bias = False)
 
         self.dist_layer = nn.Linear(2,2)
 
