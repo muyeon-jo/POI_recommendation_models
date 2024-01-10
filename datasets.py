@@ -128,20 +128,20 @@ def train_test_val_split_with_time(place_list, freq_list, time_list, test_size, 
     test_freq = []
     for i in test:
         test_place.append(i[0])
-        test_freq.append(i[1])
+        test_freq.append(i[2])
 
     train_place=[]
     train_freq=[]
     for i in train:
         train_place.append(i[0])
-        train_freq.append(i[1])
+        train_freq.append(i[2])
 
     val_place = []
     val_freq = []
 
     for i in val:
         val_place.append(i[0])
-        val_freq.append(i[1])
+        val_freq.append(i[2])
     return train_place, test_place, val_place, train_freq, test_freq, val_freq
 def get_region_num(path):
     input_file = 'poi_region.txt'
