@@ -59,11 +59,11 @@ def normalize(scores):
 class Args:
     def __init__(self):
         self.lr = 0.01# learning rate
-        self.lamda = 0.0 # model regularization rate
+        self.lamda = 0.02 # model regularization rate
         self.batch_size = 4096 # batch size for training
         self.epochs = 40 # training epoches
         self.topk = 50 # compute metrics@top_k
-        self.factor_num = 16 # predictive factors numbers in the model
+        self.factor_num = 64 # predictive factors numbers in the model
         self.hidden_dim = 64 # predictive factors numbers in the model
         self.num_ng = 4 # sample negative items for training
         self.beta = 0.5
@@ -634,8 +634,8 @@ def train_GPR(train_matrix, test_positive, val_positive, dataset):
 
 def train_GeoIE(train_matrix, test_positive, val_positive, dataset):
     now = datetime.now()
-    model_directory = "./model/"+now.strftime('%Y-%m-%d %H_%M_%S')+"NAIS"
-    result_directory = "./result/"+now.strftime('%Y-%m-%d %H_%M_%S')+"NAIS"
+    model_directory = "./model/"+now.strftime('%Y-%m-%d %H_%M_%S')+"GeoIE"
+    result_directory = "./result/"+now.strftime('%Y-%m-%d %H_%M_%S')+"GeoIE"
     if not os.path.exists(model_directory):
         os.makedirs(model_directory)
     if not os.path.exists(result_directory):
@@ -643,6 +643,13 @@ def train_GeoIE(train_matrix, test_positive, val_positive, dataset):
     max_recall = 0.0
     k_list=[5, 10, 15, 20, 25, 30]
     args = Args()
+    with open(result_directory+"/setting.txt","w") as setting_f:
+        setting_f.write("lr:{}\n".format(str(args.lr)))
+        setting_f.write("lamda:{}\n".format(str(args.lamda)))
+        setting_f.write("epochs:{}\n".format(str(args.epochs)))
+        setting_f.write("factor_num:{}\n".format(str(args.factor_num)))
+        setting_f.write("hidden_dim:{}\n".format(str(args.hidden_dim)))
+        setting_f.write("num_ng:{}\n".format(str(args.num_ng)))
     num_users = dataset.user_num
     num_items = dataset.poi_num
     dist_mat = distance_mat(num_items, G.poi_coos)
@@ -726,7 +733,7 @@ def main():
     # train_NAIS(train_matrix, test_positive, val_positive, dataset_)
     # train_BPR(train_matrix, test_positive, val_positive, dataset_)
     # train_GPR(train_matrix, test_positive, val_positive, dataset_)
-    # train_GeoIE(train_matrix, test_positive, val_positive, dataset_)
+    train_GeoIE(train_matrix, test_positive, val_positive, dataset_)
 
 if __name__ == '__main__':
     G = PowerLaw()
