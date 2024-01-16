@@ -3,13 +3,13 @@ import random
 import numpy as np
 import torch
 
-def get_BPR_batch(X, test_negative, num_poi, batch_user_index):
+def get_BPR_batch(X, num_poi, batch_user_index):
     DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     batch = []
     item_list = np.arange(num_poi).tolist()
     for uid in batch_user_index:
         poitives = X.getrow(uid).indices
-        negative = list(set(item_list)-set(poitives) - set(test_negative[uid]))
+        negative = list(set(item_list)-set(poitives))
         random.shuffle(negative)
         negative = negative[:len(poitives)]
         for i in range(len(poitives)):
@@ -21,7 +21,7 @@ def get_BPR_batch(X, test_negative, num_poi, batch_user_index):
     item_j = torch.LongTensor(batch[2]).to(DEVICE)
     return user, item_i, item_j
 
-def get_NAIS_batch(train_matrix,test_negative, num_poi, uid, negative_num):
+def get_NAIS_batch(train_matrix, num_poi, uid, negative_num):
     DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     item_list = np.arange(num_poi).tolist()
 
@@ -29,7 +29,7 @@ def get_NAIS_batch(train_matrix,test_negative, num_poi, uid, negative_num):
     random.shuffle(positives)
     histories = np.array([positives]).repeat(len(positives)*(negative_num+1),axis=0)
 
-    negative = list(set(item_list)-set(positives) - set(test_negative[uid]))
+    negative = list(set(item_list)-set(positives))
     random.shuffle(negative)
 
     negative = negative[:len(positives)*negative_num]
@@ -49,19 +49,14 @@ def get_NAIS_batch(train_matrix,test_negative, num_poi, uid, negative_num):
 
     return user_history, train_data, train_label
 
-def get_NAIS_batch_test(train_matrix, test_positive, test_negative, uid):
+def get_NAIS_batch_test(train_matrix, uid):
     DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     batch = []
     history = train_matrix.getrow(uid).indices.tolist()
-    negative = test_negative[uid]
-    positive = test_positive[uid]
-    histories = np.array([history]).repeat(len(positive)+len(negative),axis=0)
+    data = list(set(range(train_matrix.shape[1]))-set(history))
+    histories = np.array([history]).repeat(len(data),axis=0)
 
-    data = np.concatenate((negative,positive))
-
-    positive_label = np.array([1]).repeat(len(positive))
-    negative_label = np.array([0]).repeat(len(negative))
-    labels = np.concatenate((negative_label,positive_label))
+    labels = np.array([0]).repeat(len(data))
 
     user_history = torch.LongTensor(histories).to(DEVICE)
     train_data = torch.LongTensor(data).to(DEVICE)
@@ -69,7 +64,7 @@ def get_NAIS_batch_test(train_matrix, test_positive, test_negative, uid):
 
     return user_history, train_data, train_label
 
-def get_NAIS_batch_region(train_matrix,test_negative, num_poi, uid, negative_num, businessRegionEmbedList):
+def get_NAIS_batch_region(train_matrix, num_poi, uid, negative_num, businessRegionEmbedList):
     DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     item_list = np.arange(num_poi).tolist()
 
@@ -77,7 +72,7 @@ def get_NAIS_batch_region(train_matrix,test_negative, num_poi, uid, negative_num
     random.shuffle(positives)
     histories = np.array([positives]).repeat(len(positives)*(negative_num+1),axis=0)
 
-    negative = list(set(item_list)-set(positives) - set(test_negative[uid]))
+    negative = list(set(item_list)-set(positives))
     random.shuffle(negative)
 
     negative = negative[:len(positives)*negative_num]
@@ -112,23 +107,19 @@ def get_NAIS_batch_region(train_matrix,test_negative, num_poi, uid, negative_num
 
     return user_history, train_data, train_label, user_history_region, train_data_region
 
-def get_NAIS_batch_test_region(train_matrix, test_positive, test_negative, uid, businessRegionEmbedList):
+def get_NAIS_batch_test_region(train_matrix, uid, businessRegionEmbedList):
     DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     batch = []
     history = train_matrix.getrow(uid).indices.tolist()
-    negative = test_negative[uid]
-    positive = test_positive[uid]
-    histories = np.array([history]).repeat(len(positive)+len(negative),axis=0)
+    negative = list(set(range(train_matrix.shape[1]))-set(history))
+    histories = np.array([history]).repeat(len(negative),axis=0)
 
-    data = np.concatenate((negative,positive))
 
-    positive_label = np.array([1]).repeat(len(positive))
     negative_label = np.array([0]).repeat(len(negative))
-    labels = np.concatenate((negative_label,positive_label))
 
     user_history = histories
-    train_data = data
-    train_label = torch.tensor(labels,dtype=torch.float32).to(DEVICE)
+    train_data = negative
+    train_label = torch.tensor(negative_label,dtype=torch.float32).to(DEVICE)
     
     user_history_region = []
     for i in history:
@@ -146,3 +137,48 @@ def get_NAIS_batch_test_region(train_matrix, test_positive, test_negative, uid, 
     train_data_region=torch.LongTensor(train_data_region).to(DEVICE)
     
     return user_history, train_data, train_label, user_history_region, train_data_region
+
+def get_GPR_batch(train_matrix, num_poi, uids, negative_num):
+    DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    train_positives = []
+    train_negatives = []
+    user_id = []
+    for uid in uids:
+        item_list = np.arange(num_poi).tolist()
+
+        positives = train_matrix.getrow(uid).indices.tolist()
+        random.shuffle(positives)
+        
+        user_id.extend(np.array([uid]).repeat(len(positives)).reshape(-1,1).tolist())
+        negative = list(set(item_list)-set(positives))
+        random.shuffle(negative)
+
+        negative = negative[:len(positives)*negative_num]
+        train_positives.extend(positives)
+        train_negatives.extend(negative)
+    
+    train_positives = np.array(train_positives).reshape(-1,1)
+    train_negatives = np.array(train_negatives).reshape(-1,negative_num)
+    user_id = np.array(user_id).reshape(-1,1)
+
+    train_positives = torch.LongTensor(train_positives).squeeze().to(DEVICE)
+    train_negatives = torch.LongTensor(train_negatives).squeeze().to(DEVICE)
+    user_id = torch.LongTensor(user_id).squeeze().to(DEVICE)
+
+    return user_id, train_positives, train_negatives
+
+def get_GPR_batch_test(train_matrix, uid):
+    DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    datas = []
+    history = train_matrix.getrow(uid).indices.tolist()
+    negative = list(set(range(train_matrix.shape[1])) - set(history))
+    user_id = []
+
+    user_id.extend(np.array([uid]).repeat(len(negative)).tolist())
+    datas.extend(negative)
+
+    datas = torch.LongTensor(datas).to(DEVICE)
+    user_id = torch.LongTensor(user_id).to(DEVICE)
+
+    return user_id, datas
+

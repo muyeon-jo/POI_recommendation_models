@@ -371,32 +371,36 @@ class Dataset(object):
         train_matrix = sparse.dok_matrix((self.user_num, self.poi_num))
         
         val_positive = []
-        val_negative = []
         test_positive = []
-        test_negative = []
+        self.POI_POI_Graph = np.zeros([self.poi_num,self.poi_num])
+        self.user_POI_Graph = np.zeros([self.user_num,self.poi_num])
+        
         pois = set(range(self.poi_num))
         for user_id in range(self.user_num):
             place_list = raw_matrix.getrow(user_id).indices
             freq_list = raw_matrix.getrow(user_id).data
             time_list = time_matrix.getrow(user_id).data
+
             train_place, test_place, val_place, train_freq, test_freq, val_freq = train_test_val_split_with_time(place_list, freq_list, time_list, test_size, val_size)
-            # train_place, test_place, train_freq, test_freq = train_test_split_with_time(place_list, freq_list, time_list, test_size)
-            # train_place, test_place, val_place, train_freq, test_freq, val_freq = train_test_val_split(place_list, freq_list, test_size, val_size)
+            
             for i in range(len(train_place)):
                 train_matrix[user_id, train_place[i]] = train_freq[i]
+
+                self.user_POI_Graph[user_id][train_place[i]] = 1
+
+                if i <len(train_place)-1:
+                    self.POI_POI_Graph[train_place[i]][train_place[i+1]] +=1
             test_positive.append(test_place)
             val_positive.append(val_place)
 
-            negative = list(pois - set(raw_matrix.getrow(user_id).indices))
-            random.shuffle(negative)
             # train_negative.append(negative[int(len(negative)*test_size):])
-            ln = len(negative[int(len(negative)*test_size):])
-            test_ln = len(negative[:int(len(negative)*test_size)])
-            test_negative.append(negative[:test_ln])
-            val_negative.append(negative[test_ln:test_ln + int(ln*val_size)])
+            # ln = len(negative[int(len(negative)*test_size):])
+            # test_ln = len(negative[:int(len(negative)*test_size)])
+            # test_negative.append(negative[:test_ln])
+            # val_negative.append(negative[test_ln:test_ln + int(ln*val_size)])
         # sparse.save_npz('./data/Foursquare/train_matrix.npz', train_matrix)
 
-        return train_matrix.tocsr(), test_positive, test_negative,val_positive,val_negative
+        return train_matrix.tocsr(), test_positive, val_positive
 
     def read_poi_coos(self):
         poi_coos = {}
@@ -414,13 +418,13 @@ class Dataset(object):
 
     def generate_data(self, random_seed=0):
         raw_matrix, time_matrix = self.read_raw_data()
-        train_matrix, test_positive, test_negative, val_positive, val_negative = self.split_data(raw_matrix, time_matrix, random_seed)
+        train_matrix, test_positive, val_positive = self.split_data(raw_matrix, time_matrix, random_seed)
         place_coords =self.read_poi_coos()
-        return train_matrix,  test_positive, test_negative, val_positive, val_negative, place_coords
+        return train_matrix,  test_positive, val_positive, place_coords
 
 if __name__ == '__main__':
     # train_matrix, test_positive, test_negative, val_positive, val_negative, place_coords= Dataset(9902,6427,"./data/philadelphia_downtown/").generate_data()
-    train_matrix, test_positive, test_negative, val_positive, val_negative, place_coords= Dataset(9902,6427,"./data/philadelphia_downtown/").generate_data()
+    train_matrix, test_positive, val_positive, place_coords= Dataset(3725,10768,"./data/Tokyo/").generate_data()
     print(train_matrix.shape, len(test_positive), len(place_coords))
 
 

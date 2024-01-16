@@ -1,30 +1,30 @@
-from batches import get_NAIS_batch_test_region,get_NAIS_batch_region,get_NAIS_batch_test,get_NAIS_batch,get_BPR_batch
+from batches import get_NAIS_batch_test_region,get_NAIS_batch_test, get_GPR_batch_test
 import torch
 import eval_metrics
-from powerLaw import dist
-def NAIS_validation(model, args,num_users, positive, negative, train_matrix,val_flag,k_list):
+
+def NAIS_validation(model, args,num_users, test_positive, val_positive, train_matrix,k_list):
     model.eval() # 모델을 평가 모드로 설정
     recommended_list = []
     train_loss=0.0
     for user_id in range(num_users):
-        user_history, target_list, train_label = get_NAIS_batch_test(train_matrix,positive,negative,user_id)
+        user_history, target_list, train_label = get_NAIS_batch_test(train_matrix,user_id)
         prediction = model(user_history, target_list)
         # loss = model.loss_func(prediction,train_label)
         # train_loss += loss.item()
         _, indices = torch.topk(prediction, args.topk)
         recommended_list.append([target_list[i].item() for i in indices])
     
-    precision, recall, hit = eval_metrics.evaluate_mp(positive,recommended_list,k_list,val_flag)
-    
-    return precision, recall, hit
+    precision_v, recall_v, hit_v = eval_metrics.evaluate_mp(val_positive,recommended_list,k_list)
+    precision_t, recall_t, hit_t = eval_metrics.evaluate_mp(test_positive,recommended_list,k_list)
+    return precision_v, recall_v, hit_v, precision_t, recall_t, hit_t
     # return 0,[train_loss],0
 
-def NAIS_region_validation(model, args,num_users, positive, negative, train_matrix, businessRegionEmbedList, val_flag,k_list):
+def NAIS_region_validation(model, args,num_users, test_positive, val_positive, train_matrix, businessRegionEmbedList,k_list):
     model.eval() # 모델을 평가 모드로 설정
     recommended_list = []
     train_loss=0.0
     for user_id in range(num_users):
-        user_history, target_list, train_label, user_history_region, train_data_region = get_NAIS_batch_test_region(train_matrix,positive,negative,user_id, businessRegionEmbedList)
+        user_history, target_list, train_label, user_history_region, train_data_region = get_NAIS_batch_test_region(train_matrix,user_id, businessRegionEmbedList)
 
         prediction = model(user_history, target_list, user_history_region, train_data_region)
         # loss = model.loss_func(prediction,train_label)
@@ -33,12 +33,12 @@ def NAIS_region_validation(model, args,num_users, positive, negative, train_matr
         _, indices = torch.topk(prediction, args.topk)
         recommended_list.append([target_list[i].item() for i in indices])
 
-    precision, recall, hit = eval_metrics.evaluate_mp(positive,recommended_list,k_list,val_flag)
+    precision_v, recall_v, hit_v = eval_metrics.evaluate_mp(val_positive,recommended_list,k_list)
+    precision_t, recall_t, hit_t = eval_metrics.evaluate_mp(test_positive,recommended_list,k_list)
+    return precision_v, recall_v, hit_v, precision_t, recall_t, hit_t
 
-    return precision, recall, hit
-    # return 0,[train_loss],0
 
-def NAIS_region_distance_validation(model, args,num_users, positive, negative, train_matrix, businessRegionEmbedList, poi_coos,val_flag,k_list):
+def NAIS_region_distance_validation(model, args,num_users, test_positive, val_positive, train_matrix, businessRegionEmbedList, latlon_mat,k_list):
     model.eval() # 모델을 평가 모드로 설정
     DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     # DEVICE = 'cpu'
@@ -46,35 +46,33 @@ def NAIS_region_distance_validation(model, args,num_users, positive, negative, t
     recommended_list = []
     train_loss = 0.0
     for user_id in range(num_users):
-        user_history, target_list, train_label, user_history_region, train_data_region = get_NAIS_batch_test_region(train_matrix,positive,negative,user_id, businessRegionEmbedList)        
-        history_pois = [(poi_coos[i][0], poi_coos[i][1]) for i in user_history[0]] # 방문한 데이터
-        target_pois = [(poi_coos[i][0], poi_coos[i][1]) for i in target_list] # 타겟 데이터
+        user_history, target_list, train_label, user_history_region, train_data_region = get_NAIS_batch_test_region(train_matrix,user_id, businessRegionEmbedList)        
+
+        history_pois = [i for i in user_history[0].tolist()] # 방문한 데이터
+        target_pois = [i for i in target_list.tolist()] # 타겟 데이터
+            
         target_lat_long = []
         for poi1 in target_pois: #타겟 데이터에 대해서 거리 계산 batch_size
-            hist = []
-            for poi2 in history_pois:#history_size
-                hist.append((abs(poi1[0]-poi2[0]), abs(poi1[1]-poi2[1])))
-            target_lat_long.append(hist)
+            hist = latlon_mat[[poi1 for i in history_pois],history_pois]
+            target_lat_long.append(hist.tolist())
         target_lat_long=torch.tensor(target_lat_long,dtype=torch.float32).to(DEVICE)
         prediction = model(user_history, target_list, user_history_region, train_data_region, target_lat_long)
-        # loss = model.loss_func(prediction,train_label)
-        # train_loss += loss.item()
         _, indices = torch.topk(prediction, args.topk)
         recommended_list.append([target_list[i].item() for i in indices])
 
-    precision, recall, hit = eval_metrics.evaluate_mp(positive,recommended_list,k_list,val_flag)
-            
+    precision_v, recall_v, hit_v = eval_metrics.evaluate_mp(val_positive,recommended_list,k_list)
+    precision_t, recall_t, hit_t = eval_metrics.evaluate_mp(test_positive,recommended_list,k_list)
+    return precision_v, recall_v, hit_v, precision_t, recall_t, hit_t
 
-    return precision, recall , hit
-
-def BPR_validation(model, args,num_users, positive, negative,val_flag,k_list):
+def BPR_validation(model, args,num_users, test_positive, val_positive, train_matrix, k_list):
     model.eval() # 모델을 평가 모드로 설정
     DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     recommended_list = []
     for user_id in range(num_users):
-        user_tensor = torch.LongTensor([user_id] * (len(negative[user_id])+len(positive[user_id]))).to(DEVICE)
-        target_list = negative[user_id]+positive[user_id]
+        history = train_matrix.getrow(user_id).indices.tolist()
+        target_list = list(set(range(train_matrix.shape[1])) - set(history))
+        user_tensor = torch.LongTensor([user_id] * (len(target_list))).to(DEVICE)
         target_tensor = torch.LongTensor(target_list).to(DEVICE)
 
         prediction, _ = model(user_tensor, target_tensor,target_tensor)
@@ -83,6 +81,21 @@ def BPR_validation(model, args,num_users, positive, negative,val_flag,k_list):
         recommended_list.append([target_list[i] for i in indices])
 
     
-    precision, recall, hit = eval_metrics.evaluate_mp(positive,recommended_list,k_list,val_flag)
+    precision_v, recall_v, hit_v = eval_metrics.evaluate_mp(val_positive,recommended_list,k_list)
+    precision_t, recall_t, hit_t = eval_metrics.evaluate_mp(test_positive,recommended_list,k_list)
     
-    return precision, recall, hit
+    return precision_v, recall_v, hit_v, precision_t, recall_t, hit_t
+
+def GPR_validation(model, args,num_users, test_positive, val_positive, train_matrix, k_list):
+    model.eval()
+    recommended_list = []
+    for user_id in range(num_users):
+        print(user_id)
+        user_id, target_list = get_GPR_batch_test(train_matrix,user_id)
+        rating_ul, rating_ul_prime, e_ij_hat = model(user_id, target_list, target_list)
+        _, indices = torch.topk(rating_ul.squeeze(), args.topk)
+        recommended_list.append([target_list[i].item() for i in indices])
+        
+    precision_v, recall_v, hit_v = eval_metrics.evaluate_mp(val_positive,recommended_list,k_list)
+    precision_t, recall_t, hit_t = eval_metrics.evaluate_mp(test_positive,recommended_list,k_list)
+    return precision_v, recall_v, hit_v, precision_t, recall_t, hit_t
