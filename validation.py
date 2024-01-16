@@ -1,4 +1,4 @@
-from batches import get_NAIS_batch_test_region,get_NAIS_batch_test, get_GPR_batch_test
+from batches import get_NAIS_batch_test_region,get_NAIS_batch_test, get_GPR_batch_test,get_GeoIE_batch_test
 import torch
 import eval_metrics
 
@@ -96,6 +96,20 @@ def GPR_validation(model, args,num_users, test_positive, val_positive, train_mat
         _, indices = torch.topk(rating_ul.squeeze(), args.topk)
         recommended_list.append([target_list[i].item() for i in indices])
         
+    precision_v, recall_v, hit_v = eval_metrics.evaluate_mp(val_positive,recommended_list,k_list)
+    precision_t, recall_t, hit_t = eval_metrics.evaluate_mp(test_positive,recommended_list,k_list)
+    return precision_v, recall_v, hit_v, precision_t, recall_t, hit_t
+
+def GeoIE_validation(model, args,num_users, test_positive, val_positive, train_matrix,k_list,dist_mat):
+    model.eval()
+    recommended_list = []
+    train_loss=0.0
+    for user_id in range(num_users):
+        user_id, user_history, target_list, train_label, freq, distances = get_GeoIE_batch_test(train_matrix,user_id, dist_mat)
+        prediction, w = model(user_id, target_list, user_history, freq, distances)
+        _, indices = torch.topk(prediction.squeeze(), args.topk)
+        recommended_list.append([target_list[i].item() for i in indices])
+    
     precision_v, recall_v, hit_v = eval_metrics.evaluate_mp(val_positive,recommended_list,k_list)
     precision_t, recall_t, hit_t = eval_metrics.evaluate_mp(test_positive,recommended_list,k_list)
     return precision_v, recall_v, hit_v, precision_t, recall_t, hit_t

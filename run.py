@@ -4,10 +4,10 @@ import numpy as np
 import os
 import eval_metrics
 import datasets
-from batches import get_NAIS_batch_test_region,get_NAIS_batch_region,get_NAIS_batch_test,get_NAIS_batch,get_BPR_batch, get_GPR_batch
+from batches import get_NAIS_batch_region,get_NAIS_batch,get_BPR_batch, get_GPR_batch,get_GeoIE_batch
 import torch
 from powerLaw import PowerLaw, dist
-from model import NAIS_basic, NAIS_regionEmbedding,NAIS_region_distance_Embedding,BPR, NAIS_region_distance_disentangled_Embedding, NAIS_distance_Embedding, GPR
+from model import NAIS_basic, NAIS_regionEmbedding,NAIS_region_distance_Embedding,BPR, NAIS_region_distance_disentangled_Embedding, NAIS_distance_Embedding, GPR,GeoIE
 import time
 import random
 import math
@@ -66,9 +66,11 @@ class Args:
         self.factor_num = 16 # predictive factors numbers in the model
         self.hidden_dim = 64 # predictive factors numbers in the model
         self.num_ng = 4 # sample negative items for training
-        self.out = True # save model or not
         self.beta = 0.5
         self.powerlaw_weight = 0.2
+        self.sampling_ratio = 0.2
+        self.gglr_control = 0.2
+        self.scaling = 10
 
 def train_NAIS(train_matrix, test_positive, val_positive, dataset):
     now = datetime.now()
@@ -82,6 +84,14 @@ def train_NAIS(train_matrix, test_positive, val_positive, dataset):
     k_list=[5, 10, 15, 20, 25, 30]
 
     args = Args()
+    with open(result_directory+"/setting.txt","w") as setting_f:
+        setting_f.write("lr:{}\n".format(str(args.lr)))
+        setting_f.write("lamda:{}\n".format(str(args.lamda)))
+        setting_f.write("epochs:{}\n".format(str(args.epochs)))
+        setting_f.write("factor_num:{}\n".format(str(args.factor_num)))
+        setting_f.write("hidden_dim:{}\n".format(str(args.hidden_dim)))
+        setting_f.write("num_ng:{}\n".format(str(args.num_ng)))
+
     num_users = dataset.user_num
     num_items = dataset.poi_num
 
@@ -142,6 +152,13 @@ def train_NAIS_region(train_matrix, test_positive, val_positive, dataset):
     k_list=[5, 10, 15, 20, 25, 30]
 
     args = Args()
+    with open(result_directory+"/setting.txt","w") as setting_f:
+        setting_f.write("lr:{}\n".format(str(args.lr)))
+        setting_f.write("lamda:{}\n".format(str(args.lamda)))
+        setting_f.write("epochs:{}\n".format(str(args.epochs)))
+        setting_f.write("factor_num:{}\n".format(str(args.factor_num)))
+        setting_f.write("hidden_dim:{}\n".format(str(args.hidden_dim)))
+        setting_f.write("num_ng:{}\n".format(str(args.num_ng)))
     num_users = dataset.user_num
     num_items = dataset.poi_num
     region_num = datasets.get_region_num(dataset.directory_path)
@@ -205,6 +222,13 @@ def train_NAIS_region_distance(train_matrix, test_positive, val_positive, datase
     k_list=[5, 10, 15, 20, 25, 30]
 
     args = Args()
+    with open(result_directory+"/setting.txt","w") as setting_f:
+        setting_f.write("lr:{}\n".format(str(args.lr)))
+        setting_f.write("lamda:{}\n".format(str(args.lamda)))
+        setting_f.write("epochs:{}\n".format(str(args.epochs)))
+        setting_f.write("factor_num:{}\n".format(str(args.factor_num)))
+        setting_f.write("hidden_dim:{}\n".format(str(args.hidden_dim)))
+        setting_f.write("num_ng:{}\n".format(str(args.num_ng)))
     num_users = dataset.user_num
     num_items = dataset.poi_num
     poi_coos = G.poi_coos 
@@ -259,10 +283,6 @@ def train_NAIS_region_distance(train_matrix, test_positive, val_positive, datase
                 torch.save(model, model_directory+"/model")
                 f=open(result_directory+"/results.txt","w")
                 f.write("epoch:{}\n".format(e))
-                f.write("@k: " + str(k_list)+"\n")
-                f.write("prec:" + str(precision_t)+"\n")
-                f.write("recall:" + str(recall_t)+"\n")
-                f.write("hit:" + str(hit_t)+"\n")
                 f.close()
             end_time = int(time.time())
             print("eval time: {} sec".format(end_time-start_time))
@@ -279,6 +299,13 @@ def train_NAIS_region_disentangled_distance(train_matrix, test_positive, val_pos
     k_list=[5, 10, 15, 20, 25, 30]
 
     args = Args()
+    with open(result_directory+"/setting.txt","w") as setting_f:
+        setting_f.write("lr:{}\n".format(str(args.lr)))
+        setting_f.write("lamda:{}\n".format(str(args.lamda)))
+        setting_f.write("epochs:{}\n".format(str(args.epochs)))
+        setting_f.write("factor_num:{}\n".format(str(args.factor_num)))
+        setting_f.write("hidden_dim:{}\n".format(str(args.hidden_dim)))
+        setting_f.write("num_ng:{}\n".format(str(args.num_ng)))
     num_users = dataset.user_num
     num_items = dataset.poi_num
     poi_coos = G.poi_coos 
@@ -352,6 +379,13 @@ def train_NAIS_distance(train_matrix, test_positive, test_negative, val_positive
     k_list=[5, 10, 15, 20, 25, 30]
 
     args = Args()
+    with open(result_directory+"/setting.txt","w") as setting_f:
+        setting_f.write("lr:{}\n".format(str(args.lr)))
+        setting_f.write("lamda:{}\n".format(str(args.lamda)))
+        setting_f.write("epochs:{}\n".format(str(args.epochs)))
+        setting_f.write("factor_num:{}\n".format(str(args.factor_num)))
+        setting_f.write("hidden_dim:{}\n".format(str(args.hidden_dim)))
+        setting_f.write("num_ng:{}\n".format(str(args.num_ng)))
     num_users = dataset.user_num
     num_items = dataset.poi_num
     poi_coos = G.poi_coos 
@@ -425,6 +459,13 @@ def train_BPR(train_matrix, test_positive, val_positive, dataset):
     k_list=[5, 10, 15, 20, 25, 30]
 
     args = Args()
+    with open(result_directory+"/setting.txt","w") as setting_f:
+        setting_f.write("lr:{}\n".format(str(args.lr)))
+        setting_f.write("lamda:{}\n".format(str(args.lamda)))
+        setting_f.write("epochs:{}\n".format(str(args.epochs)))
+        setting_f.write("factor_num:{}\n".format(str(args.factor_num)))
+        setting_f.write("hidden_dim:{}\n".format(str(args.hidden_dim)))
+        setting_f.write("num_ng:{}\n".format(str(args.num_ng)))
     num_users = dataset.user_num
     num_items = dataset.poi_num
     ########################### CREATE MODEL #################################
@@ -469,12 +510,11 @@ def train_BPR(train_matrix, test_positive, val_positive, dataset):
             model.eval() # 모델을 평가 모드로 설정
             with torch.no_grad():
                 start_time = int(time.time())
-                val_precision, val_recall, val_hit = val.BPR_validation(model,args,num_users,val_positive,True,[10])
+                precision_v, recall_v, hit_v, precision_t, recall_t, hit_t = val.BPR_validation(model,args,num_users,test_positive,val_positive,train_matrix,k_list)
                 
-                if(max_recall < val_recall[0]):
-                    max_recall = val_recall[0]
+                if(max_recall < recall_v[1]):
+                    max_recall = recall_v[1]
                     torch.save(model, model_directory+"/model")
-                    precision, recall, hit= val.BPR_validation(model,args,num_users,test_positive,False,k_list)
                     alpha = args.powerlaw_weight
 
                     # recommended_list = []
@@ -502,9 +542,9 @@ def train_BPR(train_matrix, test_positive, val_positive, dataset):
                     f=open(result_directory+"/results.txt","w")
                     f.write("epoch:{}\n".format(epoch))
                     f.write("@k: " + str(k_list)+"\n")
-                    f.write("prec:" + str(precision)+"\n")
-                    f.write("recall:" + str(recall)+"\n")
-                    f.write("hit:" + str(hit)+"\n")
+                    f.write("prec:" + str(precision_t)+"\n")
+                    f.write("recall:" + str(recall_t)+"\n")
+                    f.write("hit:" + str(hit_t)+"\n")
 
                     # f.write("distance weight: {}\n".format(alpha))
 
@@ -523,9 +563,19 @@ def train_GPR(train_matrix, test_positive, val_positive, dataset):
         os.makedirs(model_directory)
     if not os.path.exists(result_directory):
         os.makedirs(result_directory)
+    
     max_recall = 0.0
     k_list=[5, 10, 15, 20, 25, 30]
     args = Args()
+
+    with open(result_directory+"/setting.txt","w") as setting_f:
+        setting_f.write("lr:{}\n".format(str(args.lr)))
+        setting_f.write("lamda:{}\n".format(str(args.lamda)))
+        setting_f.write("epochs:{}\n".format(str(args.epochs)))
+        setting_f.write("factor_num:{}\n".format(str(args.factor_num)))
+        setting_f.write("hidden_dim:{}\n".format(str(args.hidden_dim)))
+        setting_f.write("num_ng:{}\n".format(str(args.num_ng)))
+
     num_users = dataset.user_num
     num_items = dataset.poi_num
     dist_mat = distance_mat(num_items, G.poi_coos)
@@ -582,6 +632,78 @@ def train_GPR(train_matrix, test_positive, val_positive, dataset):
                 f.write("hit:" + str(hit_t)+"\n")
                 f.close()
 
+def train_GeoIE(train_matrix, test_positive, val_positive, dataset):
+    now = datetime.now()
+    model_directory = "./model/"+now.strftime('%Y-%m-%d %H_%M_%S')+"NAIS"
+    result_directory = "./result/"+now.strftime('%Y-%m-%d %H_%M_%S')+"NAIS"
+    if not os.path.exists(model_directory):
+        os.makedirs(model_directory)
+    if not os.path.exists(result_directory):
+        os.makedirs(result_directory)
+    max_recall = 0.0
+    k_list=[5, 10, 15, 20, 25, 30]
+    args = Args()
+    num_users = dataset.user_num
+    num_items = dataset.poi_num
+    dist_mat = distance_mat(num_items, G.poi_coos)
+    pickle_save(dist_mat,dataset.directory_path+"dist_mat.pkl")
+    dist_mat = pickle_load(dataset.directory_path+"dist_mat.pkl")
+    dist_mat = torch.tensor(dist_mat,dtype=torch.float32).to(DEVICE)
+    model = GeoIE(num_users, num_items, args.factor_num, args.num_ng, G.a,G.b).to(DEVICE)
+
+    
+    optimizer = torch.optim.SGD(model.parameters(), lr=args.lr, weight_decay=args.lamda)
+
+    for e in range(args.epochs):
+        model.train()
+        train_loss = 0.0
+        start_time = int(time.time())
+
+        idx = list(range(num_users))
+        
+        random.shuffle(idx)
+        idx_mini = [idx[:int(len(idx)*args.sampling_ratio)],
+                    idx[int(len(idx)*args.sampling_ratio):int(len(idx)*args.sampling_ratio*2)],
+                    idx[int(len(idx)*args.sampling_ratio*2):int(len(idx)*args.sampling_ratio*3)],
+                    idx[int(len(idx)*args.sampling_ratio*3):int(len(idx)*args.sampling_ratio*4)],
+                    idx[int(len(idx)*args.sampling_ratio*4):]]
+        for minibatch in idx_mini:
+            
+            for buid in minibatch:
+                optimizer.zero_grad() 
+                user_id, user_history, train_data, train_label, freq, distances = get_GeoIE_batch(train_matrix,num_items,buid,args.num_ng,dist_mat)
+                
+                pref, w = model(user_id, train_data, user_history, freq, distances)
+                # loss = model.loss_func(pref,train_label.unsqueeze(1))
+                loss = model.loss_function(pref,train_label.unsqueeze(1), w)
+                # print(pref)
+                loss.backward() 
+
+                train_loss += loss.item()
+                optimizer.step() 
+            
+        end_time = int(time.time())
+        print("Train Epoch: {}; time: {} sec; loss: {:.4f}".format(e+1, end_time-start_time,train_loss))
+        
+        model.eval() 
+        with torch.no_grad():
+            start_time = int(time.time())
+            precision_v, recall_v, hit_v, precision_t, recall_t, hit_t = val.GeoIE_validation(model,args,num_users,test_positive,val_positive,train_matrix,k_list,dist_mat)
+            end_time = int(time.time())
+            print("eval time: {} sec".format(end_time-start_time))
+            if(max_recall < recall_v[1]):
+                max_recall = recall_v[1]
+                torch.save(model, model_directory+"/model")
+                f=open(result_directory+"/results.txt","w")
+                f.write("epoch:{}\n".format(e))
+                f.write("@k: " + str(k_list)+"\n")
+                f.write("prec:" + str(precision_t)+"\n")
+                f.write("recall:" + str(recall_t)+"\n")
+                f.write("hit:" + str(hit_t)+"\n")
+                f.close()
+            end_time = int(time.time())
+            print("eval time: {} sec".format(end_time-start_time))
+
 def main():
     print("data loading")
     # dataset_ = datasets.Dataset(3725,10768,"./data/Tokyo/")
@@ -597,12 +719,14 @@ def main():
     
     print("train start")
     # train_NAIS_distance(train_matrix, test_positive, test_negative, val_positive, val_negative, dataset_)
-    train_NAIS_region_distance(train_matrix, test_positive, val_positive, dataset_)
+    # train_NAIS_region_distance(train_matrix, test_positive, val_positive, dataset_)
     # train_NAIS_region_disentangled_distance(train_matrix, test_positive, test_negative, val_positive, val_negative, dataset_)
     
     # train_NAIS_region(train_matrix, test_positive, val_positive, dataset_)
     # train_NAIS(train_matrix, test_positive, val_positive, dataset_)
-    # train_BPR(train_matrix, test_positive, test_negative, val_positive, val_negative, dataset_)
+    # train_BPR(train_matrix, test_positive, val_positive, dataset_)
+    # train_GPR(train_matrix, test_positive, val_positive, dataset_)
+    # train_GeoIE(train_matrix, test_positive, val_positive, dataset_)
 
 if __name__ == '__main__':
     G = PowerLaw()
