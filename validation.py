@@ -100,12 +100,40 @@ def GPR_validation(model, args,num_users, test_positive, val_positive, train_mat
     precision_t, recall_t, hit_t = eval_metrics.evaluate_mp(test_positive,recommended_list,k_list)
     return precision_v, recall_v, hit_v, precision_t, recall_t, hit_t
 
+def GPR_validation_(model, args,num_users, test_data, test_positive,val_positive,k_list):
+    model.eval()
+    recommended_list = []
+    for user_id in range(num_users):
+        print(user_id)
+        user_id, target_list = test_data[user_id]
+        rating_ul, rating_ul_prime, e_ij_hat = model(user_id, target_list, target_list)
+        _, indices = torch.topk(rating_ul.squeeze(), args.topk)
+        recommended_list.append([target_list[i].item() for i in indices])
+        
+    precision_v, recall_v, hit_v = eval_metrics.evaluate_mp(val_positive,recommended_list,k_list)
+    precision_t, recall_t, hit_t = eval_metrics.evaluate_mp(test_positive,recommended_list,k_list)
+    return precision_v, recall_v, hit_v, precision_t, recall_t, hit_t
+
 def GeoIE_validation(model, args,num_users, test_positive, val_positive, train_matrix,k_list,dist_mat):
     model.eval()
     recommended_list = []
     train_loss=0.0
     for user_id in range(num_users):
         user_id, user_history, target_list, train_label, freq, distances = get_GeoIE_batch_test(train_matrix,user_id, dist_mat)
+        prediction, w = model(user_id, target_list, user_history, freq, distances)
+        _, indices = torch.topk(prediction.squeeze(), args.topk)
+        recommended_list.append([target_list[i].item() for i in indices])
+    
+    precision_v, recall_v, hit_v = eval_metrics.evaluate_mp(val_positive,recommended_list,k_list)
+    precision_t, recall_t, hit_t = eval_metrics.evaluate_mp(test_positive,recommended_list,k_list)
+    return precision_v, recall_v, hit_v, precision_t, recall_t, hit_t
+
+def GeoIE_validation_(model, args,num_users,test_data, test_positive, val_positive,k_list):
+    model.eval()
+    recommended_list = []
+    train_loss=0.0
+    for uid in range(num_users):
+        user_id, user_history, target_list, train_label, freq, distances = test_data[uid]
         prediction, w = model(user_id, target_list, user_history, freq, distances)
         _, indices = torch.topk(prediction.squeeze(), args.topk)
         recommended_list.append([target_list[i].item() for i in indices])

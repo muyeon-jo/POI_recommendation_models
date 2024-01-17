@@ -181,13 +181,32 @@ def get_GPR_batch_test(train_matrix, uid):
     user_id = torch.LongTensor(user_id).to(DEVICE)
 
     return user_id, datas
+def get_GPR_batch_test_(train_matrix):
+    DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    test_data = []
+    user_num, item_num = train_matrix.shape
+    for uid in range(user_num):
+        datas = []
+        history = train_matrix.getrow(uid).indices.tolist()
+        negative = list(set(range(train_matrix.shape[1])) - set(history))
+        user_id = []
+
+        user_id.extend(np.array([uid]).repeat(len(negative)).tolist())
+        datas.extend(negative)
+
+        datas = torch.LongTensor(datas).to(DEVICE)
+        user_id = torch.LongTensor(user_id).to(DEVICE)
+        test_data.append([user_id,datas])
+
+    return test_data
 
 
-def get_GeoIE_batch(train_matrix, num_poi, uid, negative_num, dist_mat):
+def get_GeoIE_batch(train_matrix,test_negative, num_poi, uid, negative_num, dist_mat):
     DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     item_list = np.arange(num_poi).tolist()
 
     positives = train_matrix.getrow(uid).indices.tolist()
+    ttt = train_matrix.getrow(uid).data
     random.shuffle(positives)
     histories = np.array([positives]).repeat(len(positives)*(negative_num+1),axis=0)
 
@@ -204,11 +223,10 @@ def get_GeoIE_batch(train_matrix, num_poi, uid, negative_num, dist_mat):
     data = data.reshape(-1)
     distances = []
     for t in data:
-        temp = []
-        for hi in positives:
-            temp.append(dist_mat[t][hi])
+        temp = dist_mat[[t for i in range(len(positives))],positives]
         distances.append(temp)
-
+    distances = np.array(distances)
+    
     positive_label = np.array([1]).repeat(len(positives)).reshape(-1,1)
     negative_label = np.array([0]).repeat(len(positives)*negative_num).reshape(-1,negative_num)
     labels = np.concatenate((positive_label,negative_label),axis=-1).reshape(-1)
@@ -225,25 +243,59 @@ def get_GeoIE_batch(train_matrix, num_poi, uid, negative_num, dist_mat):
 
 def get_GeoIE_batch_test(train_matrix, uid, dist_mat):
     DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    batch = []
     history = train_matrix.getrow(uid).indices.tolist()
-    data = list(set(range(train_matrix.shape[1])) - set(history))
-    histories = np.array([history]).repeat(len(data),axis=0)
+    # negative = test_negative[uid]
+    # positive = test_positive[uid]
+    negative = list(set(range(train_matrix.shape[1]))-set(history))
+    histories = np.array([history]).repeat(len(negative),axis=0)
+
 
     distances = []
-    for t in data:
-        temp = []
-        for hi in history:
-            temp.append(dist_mat[t][hi])
+    for t in negative:
+        temp = dist_mat[[t for i in range(len(history))],history]
         distances.append(temp)
-
-    labels = np.array([0]).repeat(len(data))
+    distances = np.array(distances)
+    labels = np.array([0]).repeat(len(negative))
 
     user_history = torch.LongTensor(histories).to(DEVICE)
-    train_data = torch.LongTensor(data).to(DEVICE)
+    train_data = torch.LongTensor(negative).to(DEVICE)
     train_label = torch.tensor(labels, dtype=torch.float32).to(DEVICE)
     user_id = torch.LongTensor(np.array([uid]).repeat(len(train_data))).to(DEVICE)
-    freq = np.ones([len(data)])
+    freq = np.ones([len(negative)])
     freq = torch.LongTensor(freq).reshape(-1,1).to(DEVICE)
     distances = torch.tensor(distances,dtype=torch.float32).to(DEVICE)
 
     return user_id, user_history, train_data, train_label, freq, distances
+
+def get_GeoIE_batch_test_(train_matrix, dist_mat):
+    DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    batch = []
+    user_num, item_num = train_matrix.shape
+    for uid in range(user_num):
+
+        history = train_matrix.getrow(uid).indices.tolist()
+        # negative = test_negative[uid]
+        # positive = test_positive[uid]
+        negative = list(set(range(train_matrix.shape[1]))-set(history))
+        histories = np.array([history]).repeat(len(negative),axis=0)
+
+
+        distances = []
+        for t in negative:
+            temp = dist_mat[[t for i in range(len(history))],history]
+            distances.append(temp)
+        distances = np.array(distances)
+        labels = np.array([0]).repeat(len(negative))
+
+        user_history = torch.LongTensor(histories).to(DEVICE)
+        train_data = torch.LongTensor(negative).to(DEVICE)
+        train_label = torch.tensor(labels, dtype=torch.float32).to(DEVICE)
+        user_id = torch.LongTensor(np.array([uid]).repeat(len(train_data))).to(DEVICE)
+        freq = np.ones([len(negative)])
+        freq = torch.LongTensor(freq).reshape(-1,1).to(DEVICE)
+        distances = torch.tensor(distances,dtype=torch.float32).to(DEVICE)
+
+        batch.append((user_id, user_history, train_data, train_label, freq, distances))
+
+    return batch
