@@ -48,8 +48,8 @@ def NAIS_region_distance_validation(model, args,num_users, test_positive, val_po
     for user_id in range(num_users):
         user_history, target_list, train_label, user_history_region, train_data_region = get_NAIS_batch_test_region(train_matrix,user_id, businessRegionEmbedList)        
 
-        history_pois = [i for i in user_history[0].tolist()] # 방문한 데이터
-        target_pois = [i for i in target_list.tolist()] # 타겟 데이터
+        history_pois = user_history[0].tolist() # 방문한 데이터
+        target_pois = target_list.tolist() # 타겟 데이터
             
         target_lat_long = []
         for poi1 in target_pois: #타겟 데이터에 대해서 거리 계산 batch_size

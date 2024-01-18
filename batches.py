@@ -90,15 +90,15 @@ def get_NAIS_batch_region(train_matrix, num_poi, uid, negative_num, businessRegi
     train_data = data
     train_label = torch.tensor(labels,dtype=torch.float32).to(DEVICE)
     
-    user_history_region = []
-    for i in positives:
-        user_history_region.append(businessRegionEmbedList[i])
+    user_history_region = businessRegionEmbedList[positives]
+    # for i in positives:
+    #     user_history_region.append(businessRegionEmbedList[i])
     
     user_history_region = np.array([user_history_region]).repeat(len(user_history),axis=0)
 
-    train_data_region = []
-    for i in train_data:
-        train_data_region.append(businessRegionEmbedList[i])
+    train_data_region = businessRegionEmbedList[train_data.tolist()]
+    # for i in train_data:
+    #     train_data_region.append(businessRegionEmbedList[i])
 
     user_history=torch.LongTensor(user_history).to(DEVICE)
     train_data=torch.LongTensor(train_data).to(DEVICE)
@@ -121,15 +121,15 @@ def get_NAIS_batch_test_region(train_matrix, uid, businessRegionEmbedList):
     train_data = negative
     train_label = torch.tensor(negative_label,dtype=torch.float32).to(DEVICE)
     
-    user_history_region = []
-    for i in history:
-        user_history_region.append(businessRegionEmbedList[i])
+    user_history_region = businessRegionEmbedList[history]
+    # for i in history:
+    #     user_history_region.append(businessRegionEmbedList[i])
     
     user_history_region = np.array([user_history_region]).repeat(len(user_history),axis=0)
 
-    train_data_region = []
-    for i in train_data:
-        train_data_region.append(businessRegionEmbedList[i])
+    train_data_region = businessRegionEmbedList[train_data]
+    # for i in train_data:
+    #     train_data_region.append(businessRegionEmbedList[i])
 
     user_history=torch.LongTensor(user_history).to(DEVICE)
     train_data=torch.LongTensor(train_data).to(DEVICE)
