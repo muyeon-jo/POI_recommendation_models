@@ -58,14 +58,14 @@ def normalize(scores):
     return scores
 class Args:
     def __init__(self):
-        self.lr = 0.0001# learning rate
-        self.lamda = 0.0002 # model regularization rate
+        self.lr = 0.002# learning rate
+        self.lamda = 0.0 # model regularization rate
         self.batch_size = 4096 # batch size for training
         self.epochs = 40 # training epoches
         self.topk = 50 # compute metrics@top_k
         self.factor_num = 64 # predictive factors numbers in the model
-        self.hidden_dim = 64 # predictive factors numbers in the model
-        self.num_ng = 10 # sample negative items for training
+        self.hidden_dim = 128 # predictive factors numbers in the model
+        self.num_ng = 4 # sample negative items for training
         self.beta = 0.5
         self.powerlaw_weight = 0.2
         self.sampling_ratio = 0.2
@@ -232,8 +232,8 @@ def train_NAIS_region_distance(train_matrix, test_positive, val_positive, datase
     num_users = dataset.user_num
     num_items = dataset.poi_num
     poi_coos = G.poi_coos 
-    latlon_mat = lat_lon_mat(num_items,poi_coos)
-    pickle_save(latlon_mat,dataset.directory_path+"latlon_mat.pkl")
+    # latlon_mat = lat_lon_mat(num_items,poi_coos)
+    # pickle_save(latlon_mat,dataset.directory_path+"latlon_mat.pkl")
     latlon_mat = pickle_load(dataset.directory_path+"latlon_mat.pkl")
     region_num = datasets.get_region_num(dataset.directory_path)
     with open(dataset.directory_path+"poi_region_sorted.txt", 'r') as file:
@@ -254,12 +254,12 @@ def train_NAIS_region_distance(train_matrix, test_positive, val_positive, datase
         random.shuffle(idx)
         for buid in idx:
             user_history , train_data, train_label, user_history_region, train_data_region = get_NAIS_batch_region(train_matrix, num_items, buid, args.num_ng, businessRegionEmbedList)
-            history_pois = [i for i in user_history[0].tolist()] # 방문한 데이터
-            target_pois = [i for i in train_data.tolist()] # 타겟 데이터
+            history_pois = user_history[0].tolist() # 방문한 데이터
+            target_pois = train_data.tolist() # 타겟 데이터
             
             target_lat_long = []
             for poi1 in target_pois: #타겟 데이터에 대해서 거리 계산 batch_size
-                hist = latlon_mat[[poi1 for i in history_pois],history_pois]
+                hist = latlon_mat[[poi1] ,history_pois]
                 target_lat_long.append(hist.tolist())
             target_lat_long=torch.tensor(target_lat_long,dtype=torch.float32).to(DEVICE)
             optimizer.zero_grad() # 그래디언트 초기화
@@ -284,6 +284,10 @@ def train_NAIS_region_distance(train_matrix, test_positive, val_positive, datase
                     torch.save(model, model_directory+"/model")
                     f=open(result_directory+"/results.txt","w")
                     f.write("epoch:{}\n".format(e))
+                    f.write("@k: " + str(k_list)+"\n")
+                    f.write("prec:" + str(precision_t)+"\n")
+                    f.write("recall:" + str(recall_t)+"\n")
+                    f.write("hit:" + str(hit_t)+"\n")
                     f.close()
                 end_time = int(time.time())
                 print("eval time: {} sec".format(end_time-start_time))
@@ -804,18 +808,18 @@ if __name__ == '__main__':
     # datasets.get_region_num(dataset_.directory_path)
     print("geo file generated")
     
-    G.fit_distance_distribution(train_matrix, place_coords)
+    G.fit_distance_distribution(train_matrix, np.array(place_coords))
     
     print("train start")
     # train_NAIS_distance(train_matrix, test_positive, test_negative, val_positive, val_negative, dataset_)
-    # train_NAIS_region_distance(train_matrix, test_positive, val_positive, dataset_)
+    train_NAIS_region_distance(train_matrix, test_positive, val_positive, dataset_)
     # train_NAIS_region_disentangled_distance(train_matrix, test_positive, test_negative, val_positive, val_negative, dataset_)
     
     # train_NAIS_region(train_matrix, test_positive, val_positive, dataset_)
     # train_NAIS(train_matrix, test_positive, val_positive, dataset_)
     # train_BPR(train_matrix, test_positive, val_positive, dataset_)
     # train_GPR(train_matrix, test_positive, val_positive, dataset_)
-    train_GeoIE(train_matrix, test_positive, val_positive, dataset_)
+    # train_GeoIE(train_matrix, test_positive, val_positive, dataset_)
     ############################################################################
     G = PowerLaw()
     print("data loading")
@@ -828,18 +832,18 @@ if __name__ == '__main__':
     # datasets.get_region_num(dataset_.directory_path)
     print("geo file generated")
     
-    G.fit_distance_distribution(train_matrix, place_coords)
+    G.fit_distance_distribution(train_matrix, np.array(place_coords))
     
     print("train start")
     # train_NAIS_distance(train_matrix, test_positive, test_negative, val_positive, val_negative, dataset_)
-    # train_NAIS_region_distance(train_matrix, test_positive, val_positive, dataset_)
+    train_NAIS_region_distance(train_matrix, test_positive, val_positive, dataset_)
     # train_NAIS_region_disentangled_distance(train_matrix, test_positive, test_negative, val_positive, val_negative, dataset_)
     
     # train_NAIS_region(train_matrix, test_positive, val_positive, dataset_)
     # train_NAIS(train_matrix, test_positive, val_positive, dataset_)
     # train_BPR(train_matrix, test_positive, val_positive, dataset_)
     # train_GPR(train_matrix, test_positive, val_positive, dataset_)
-    train_GeoIE(train_matrix, test_positive, val_positive, dataset_)
+    # train_GeoIE(train_matrix, test_positive, val_positive, dataset_)
 
     # ############################################################################
     G = PowerLaw()
@@ -853,15 +857,15 @@ if __name__ == '__main__':
     # datasets.get_region_num(dataset_.directory_path)
     print("geo file generated")
     
-    G.fit_distance_distribution(train_matrix, place_coords)
+    G.fit_distance_distribution(train_matrix, np.array(place_coords))
     
     print("train start")
     # train_NAIS_distance(train_matrix, test_positive, test_negative, val_positive, val_negative, dataset_)
-    # train_NAIS_region_distance(train_matrix, test_positive, val_positive, dataset_)
+    train_NAIS_region_distance(train_matrix, test_positive, val_positive, dataset_)
     # train_NAIS_region_disentangled_distance(train_matrix, test_positive, test_negative, val_positive, val_negative, dataset_)
     
     # train_NAIS_region(train_matrix, test_positive, val_positive, dataset_)
     # train_NAIS(train_matrix, test_positive, val_positive, dataset_)
     # train_BPR(train_matrix, test_positive, val_positive, dataset_)
     # train_GPR(train_matrix, test_positive, val_positive, dataset_)
-    train_GeoIE(train_matrix, test_positive, val_positive, dataset_)
+    # train_GeoIE(train_matrix, test_positive, val_positive, dataset_)

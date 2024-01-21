@@ -53,7 +53,7 @@ def NAIS_region_distance_validation(model, args,num_users, test_positive, val_po
             
         target_lat_long = []
         for poi1 in target_pois: #타겟 데이터에 대해서 거리 계산 batch_size
-            hist = latlon_mat[[poi1 for i in history_pois],history_pois]
+            hist = latlon_mat[[poi1] ,history_pois]
             target_lat_long.append(hist.tolist())
         target_lat_long=torch.tensor(target_lat_long,dtype=torch.float32).to(DEVICE)
         prediction = model(user_history, target_list, user_history_region, train_data_region, target_lat_long)
