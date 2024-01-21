@@ -272,7 +272,7 @@ def train_NAIS_region_distance(train_matrix, test_positive, val_positive, datase
         end_time = int(time.time())
         print("Train Epoch: {}; time: {} sec; loss: {:.4f}".format(e+1, end_time-start_time,train_loss))
         
-        if (e+1)%10 == 0:
+        if (e+1)%5 == 0:
             model.eval() # 모델을 평가 모드로 설정
             with torch.no_grad():
                 start_time = int(time.time())
