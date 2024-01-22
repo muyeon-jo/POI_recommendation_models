@@ -58,8 +58,8 @@ def normalize(scores):
     return scores
 class Args:
     def __init__(self):
-        self.lr = 0.002# learning rate
-        self.lamda = 0.0 # model regularization rate
+        self.lr = 0.001# learning rate
+        self.lamda = 1e-06 # model regularization rate
         self.batch_size = 4096 # batch size for training
         self.epochs = 40 # training epoches
         self.topk = 50 # compute metrics@top_k
@@ -240,7 +240,7 @@ def train_NAIS_region_distance(train_matrix, test_positive, val_positive, datase
         # 모든 행을 읽어와서 첫 번째 열만 리스트로 변환
         businessRegionEmbedList = [int(line.split('\t')[1].strip()) for line in file.readlines()]
 
-    model = NAIS_region_distance_Embedding(num_items, args.factor_num, args.factor_num, args.beta, region_num,1).to(DEVICE)
+    model = NAIS_region_distance_Embedding(num_items, args.factor_num, args.hidden_dim, args.beta, region_num,1).to(DEVICE)
     businessRegionEmbedList = np.array(businessRegionEmbedList)
     # 옵티마이저 생성 (adagrad 사용)
     optimizer = torch.optim.Adagrad(model.parameters(), lr=args.lr, weight_decay=args.lamda)
@@ -256,11 +256,12 @@ def train_NAIS_region_distance(train_matrix, test_positive, val_positive, datase
             user_history , train_data, train_label, user_history_region, train_data_region = get_NAIS_batch_region(train_matrix, num_items, buid, args.num_ng, businessRegionEmbedList)
             history_pois = user_history[0].tolist() # 방문한 데이터
             target_pois = train_data.tolist() # 타겟 데이터
-            
-            target_lat_long = []
-            for poi1 in target_pois: #타겟 데이터에 대해서 거리 계산 batch_size
-                hist = latlon_mat[[poi1] ,history_pois]
-                target_lat_long.append(hist.tolist())
+            history_pois = np.repeat(np.array(history_pois).reshape(1,-1),len(target_pois),axis=0)
+            target_pois = np.repeat(np.array(target_pois).reshape(-1,1),len(user_history[0]),axis=1)
+            target_lat_long = latlon_mat[target_pois ,history_pois]
+            # for poi1 in target_pois: #타겟 데이터에 대해서 거리 계산 batch_size
+            #     hist = latlon_mat[target_pois ,history_pois]
+            #     target_lat_long.append(hist.tolist())
             target_lat_long=torch.tensor(target_lat_long,dtype=torch.float32).to(DEVICE)
             optimizer.zero_grad() # 그래디언트 초기화
 
@@ -823,9 +824,9 @@ if __name__ == '__main__':
     ############################################################################
     G = PowerLaw()
     print("data loading")
-    dataset_ = datasets.Dataset(15359,14586,"./data/Yelp/")
-    train_matrix, test_positive, val_positive, place_coords = dataset_.generate_data(0)
-    pickle_save((train_matrix, test_positive, val_positive, place_coords,dataset_),"dataset_Yelp.pkl")
+    # dataset_ = datasets.Dataset(15359,14586,"./data/Yelp/")
+    # train_matrix, test_positive, val_positive, place_coords = dataset_.generate_data(0)
+    # pickle_save((train_matrix, test_positive, val_positive, place_coords,dataset_),"dataset_Yelp.pkl")
     train_matrix, test_positive, val_positive, place_coords, dataset_ = pickle_load("dataset_Yelp.pkl")
     print("train data generated")
     # datasets.get_region(place_coords,200,dataset_.directory_path)
@@ -848,9 +849,9 @@ if __name__ == '__main__':
     # ############################################################################
     G = PowerLaw()
     print("data loading")
-    dataset_ = datasets.Dataset(6638,21102,"./data/NewYork/")
-    train_matrix, test_positive, val_positive, place_coords = dataset_.generate_data(0)
-    pickle_save((train_matrix, test_positive, val_positive, place_coords,dataset_),"dataset_NewYork.pkl")
+    # dataset_ = datasets.Dataset(6638,21102,"./data/NewYork/")
+    # train_matrix, test_positive, val_positive, place_coords = dataset_.generate_data(0)
+    # pickle_save((train_matrix, test_positive, val_positive, place_coords,dataset_),"dataset_NewYork.pkl")
     train_matrix, test_positive, val_positive, place_coords, dataset_ = pickle_load("dataset_NewYork.pkl")
     print("train data generated")
     # datasets.get_region(place_coords,200,dataset_.directory_path)

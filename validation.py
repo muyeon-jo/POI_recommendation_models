@@ -1,6 +1,7 @@
 from batches import get_NAIS_batch_test_region,get_NAIS_batch_test, get_GPR_batch_test,get_GeoIE_batch_test
 import torch
 import eval_metrics
+import numpy as np
 
 def NAIS_validation(model, args,num_users, test_positive, val_positive, train_matrix,k_list):
     model.eval() # 모델을 평가 모드로 설정
@@ -50,11 +51,14 @@ def NAIS_region_distance_validation(model, args,num_users, test_positive, val_po
 
         history_pois = user_history[0].tolist() # 방문한 데이터
         target_pois = target_list.tolist() # 타겟 데이터
-            
-        target_lat_long = []
-        for poi1 in target_pois: #타겟 데이터에 대해서 거리 계산 batch_size
-            hist = latlon_mat[[poi1] ,history_pois]
-            target_lat_long.append(hist.tolist())
+        
+        history_pois = np.repeat(np.array(history_pois).reshape(1,-1),len(target_pois),axis=0)
+        target_pois = np.repeat(np.array(target_pois).reshape(-1,1),len(user_history[0]),axis=1)
+        target_lat_long = latlon_mat[target_pois ,history_pois]
+        # target_lat_long = []
+        # for poi1 in target_pois: #타겟 데이터에 대해서 거리 계산 batch_size
+        #     hist = latlon_mat[[poi1] ,history_pois]
+        #     target_lat_long.append(hist.tolist())
         target_lat_long=torch.tensor(target_lat_long,dtype=torch.float32).to(DEVICE)
         prediction = model(user_history, target_list, user_history_region, train_data_region, target_lat_long)
         _, indices = torch.topk(prediction, args.topk)
