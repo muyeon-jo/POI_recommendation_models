@@ -45,22 +45,64 @@ def NAIS_region_distance_validation(model, args,num_users, test_positive, val_po
     # DEVICE = 'cpu'
     alpha = args.powerlaw_weight
     recommended_list = []
-    train_loss = 0.0
+    
     for user_id in range(num_users):
-        user_history, target_list, train_label, user_history_region, train_data_region = get_NAIS_batch_test_region(train_matrix,user_id, businessRegionEmbedList)        
+        # torch.cuda.empty_cache()
+        # user_history, target_list, train_label, user_history_region, train_data_region = get_NAIS_batch_test_region(train_matrix,user_id, businessRegionEmbedList)         
 
-        history_pois = user_history[0].tolist() # 방문한 데이터
-        target_pois = target_list.tolist() # 타겟 데이터
+        # history_pois = user_history[0].tolist() # 방문한 데이터
+        # target_pois = target_list.tolist() # 타겟 데이터
+            
+        # history_pois = np.repeat(np.array(history_pois).reshape(1,-1),len(target_pois),axis=0)
+        # target_pois = np.repeat(np.array(target_pois).reshape(-1,1),len(user_history[0]),axis=1)
+        # target_lat_long = latlon_mat[target_pois ,history_pois]
+
+        # target_lat_long=torch.tensor(target_lat_long,dtype=torch.float32).to(DEVICE)
+        # prediction = model(user_history, target_list, user_history_region, train_data_region, target_lat_long)
+        # _, indices = torch.topk(prediction, args.topk)
+        # recommended_list.append([target_list[i].item() for i in indices])
+        re = []
+        ta=[]
+        history = train_matrix.getrow(user_id).indices.tolist()
+        negatives = list(set(range(train_matrix.shape[1]))-set(history))
+        bsize = 2048 
+        negative = [negatives[i * bsize:(i + 1) * bsize] for i in range((len(negatives) + bsize - 1) // bsize )]
+        for bat in range(len(negative)):
+            histories = np.array([history]).repeat(len(negative[bat]),axis=0)
+
+            user_history = histories
+            train_data = negative[bat]
+            
+            user_history_region = businessRegionEmbedList[history]
+            
+            user_history_region = np.array([user_history_region]).repeat(len(user_history),axis=0)
+
+            train_data_region = businessRegionEmbedList[train_data]
+
+            user_history=torch.LongTensor(user_history).to(DEVICE)
+            train_data=torch.LongTensor(train_data).to(DEVICE)
+            user_history_region=torch.LongTensor(user_history_region).to(DEVICE)
+            train_data_region=torch.LongTensor(train_data_region).to(DEVICE)      
+            target_list = train_data
+
+            history_pois = user_history[0].tolist() # 방문한 데이터
+            target_pois = target_list.tolist() # 타겟 데이터
+            
+            history_pois = np.repeat(np.array(history_pois).reshape(1,-1),len(target_pois),axis=0)
+            target_pois = np.repeat(np.array(target_pois).reshape(-1,1),len(user_history[0]),axis=1)
+            target_lat_long = latlon_mat[target_pois ,history_pois]
+            # target_lat_long = []
+            # for poi1 in target_pois: #타겟 데이터에 대해서 거리 계산 batch_size
+            #     hist = latlon_mat[[poi1] ,history_pois]
+            #     target_lat_long.append(hist.tolist())
+            target_lat_long=torch.tensor(target_lat_long,dtype=torch.float32).to(DEVICE)
+            prediction = model(user_history, target_list, user_history_region, train_data_region, target_lat_long)
+            ta.append(target_list)
+            re.append(prediction)
+        # _, indices = torch.topk(prediction, args.topk)
         
-        history_pois = np.repeat(np.array(history_pois).reshape(1,-1),len(target_pois),axis=0)
-        target_pois = np.repeat(np.array(target_pois).reshape(-1,1),len(user_history[0]),axis=1)
-        target_lat_long = latlon_mat[target_pois ,history_pois]
-        # target_lat_long = []
-        # for poi1 in target_pois: #타겟 데이터에 대해서 거리 계산 batch_size
-        #     hist = latlon_mat[[poi1] ,history_pois]
-        #     target_lat_long.append(hist.tolist())
-        target_lat_long=torch.tensor(target_lat_long,dtype=torch.float32).to(DEVICE)
-        prediction = model(user_history, target_list, user_history_region, train_data_region, target_lat_long)
+        prediction = torch.cat(re,dim=-1)
+        target_list = torch.cat(ta,dim=-1)
         _, indices = torch.topk(prediction, args.topk)
         recommended_list.append([target_list[i].item() for i in indices])
 
