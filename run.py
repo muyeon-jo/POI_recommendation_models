@@ -56,21 +56,7 @@ def normalize(scores):
     if not max_score == 0:
         scores = [s / max_score for s in scores]
     return scores
-class Args:
-    def __init__(self):
-        self.lr = 0.01# learning rate
-        self.lamda = 0.0001 # model regularization rate
-        self.batch_size = 4096 # batch size for training
-        self.epochs = 20 # training epoches
-        self.topk = 50 # compute metrics@top_k
-        self.factor_num = 128 # predictive factors numbers in the model
-        self.hidden_dim = 128 # predictive factors numbers in the model
-        self.num_ng = 4 # sample negative items for training
-        self.beta = 0.5
-        self.powerlaw_weight = 0.2
-        self.sampling_ratio = 0.2
-        self.gglr_control = 0.2
-        self.scaling = 10
+
 
 def train_NAIS(train_matrix, test_positive, val_positive, dataset):
     now = datetime.now()
@@ -149,7 +135,7 @@ def train_NAIS(train_matrix, test_positive, val_positive, dataset):
                     f.close()
                 end_time = int(time.time())
                 print("eval time: {} sec".format(end_time-start_time))
-def train_NAIS_region(train_matrix, test_positive, val_positive, dataset):
+def train_NAIS_region(train_matrix, test_positive, val_positive, dataset,args):
 
     now = datetime.now()
     model_directory = "./model/"+now.strftime('%Y-%m-%d %H_%M_%S')+"NAIS_region"
@@ -161,7 +147,7 @@ def train_NAIS_region(train_matrix, test_positive, val_positive, dataset):
     max_recall = 0.0
     k_list=[5, 10, 15, 20, 25, 30]
 
-    args = Args()
+    # args = Args()
     with open(result_directory+"/setting.txt","w") as setting_f:
         setting_f.write("lr:{}\n".format(str(args.lr)))
         setting_f.write("lamda:{}\n".format(str(args.lamda)))
@@ -230,7 +216,7 @@ def train_NAIS_region(train_matrix, test_positive, val_positive, dataset):
                     f.close()
                 end_time = int(time.time())
                 print("eval time: {} sec".format(end_time-start_time))
-def train_NAIS_region_distance(train_matrix, test_positive, val_positive, dataset):
+def train_NAIS_region_distance(train_matrix, test_positive, val_positive, dataset,args):
 
     now = datetime.now()
     model_directory = "./model/"+now.strftime('%Y-%m-%d %H_%M_%S')+"NAIS_region_distance"
@@ -242,7 +228,7 @@ def train_NAIS_region_distance(train_matrix, test_positive, val_positive, datase
     max_recall = 0.0
     k_list=[5, 10, 15, 20, 25, 30]
 
-    args = Args()
+    # args = Args()
     with open(result_directory+"/setting.txt","w") as setting_f:
         setting_f.write("lr:{}\n".format(str(args.lr)))
         setting_f.write("lamda:{}\n".format(str(args.lamda)))
@@ -254,8 +240,8 @@ def train_NAIS_region_distance(train_matrix, test_positive, val_positive, datase
     num_users = dataset.user_num
     num_items = dataset.poi_num
     poi_coos = G.poi_coos 
-    # latlon_mat = lat_lon_mat(num_items,poi_coos)
-    # pickle_save(latlon_mat,dataset.directory_path+"latlon_mat.pkl")
+    latlon_mat = lat_lon_mat(num_items,poi_coos)
+    pickle_save(latlon_mat,dataset.directory_path+"latlon_mat.pkl")
     latlon_mat = pickle_load(dataset.directory_path+"latlon_mat.pkl")
     region_num = datasets.get_region_num(dataset.directory_path)
     with open(dataset.directory_path+"poi_region_sorted.txt", 'r') as file:
@@ -870,76 +856,50 @@ def set_seed(random_seed):
     torch.backends.cudnn.benchmark = False
     np.random.seed(random_seed)
     random.seed(random_seed)
+class Args:
+    def __init__(self):
+        self.lr = 0.01# learning rate
+        self.lamda = 0.0 # model regularization rate
+        self.batch_size = 4096 # batch size for training
+        self.epochs = 20 # training epoches
+        self.topk = 50 # compute metrics@top_k
+        self.factor_num = 128 # predictive factors numbers in the model
+        self.hidden_dim = 128 # predictive factors numbers in the model
+        self.num_ng = 4 # sample negative items for training
+        self.beta = 0.5
+        self.powerlaw_weight = 0.2
+        self.sampling_ratio = 0.2
+        self.gglr_control = 0.2
+        self.scaling = 10
 if __name__ == '__main__':
     DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(DEVICE)
     set_seed(0)
-    # DEVICE = 'cpu'
-    # G = PowerLaw()
-    # print("data loading")
-    # dataset_ = datasets.Dataset(3725,10768,"./data/Tokyo/")
-    # train_matrix, test_positive, val_positive, place_coords = dataset_.generate_data(0)
-    # pickle_save((train_matrix, test_positive, val_positive, place_coords,dataset_),"dataset_Tokyo.pkl")
-    # train_matrix, test_positive, val_positive, place_coords, dataset_ = pickle_load("dataset_Tokyo.pkl")
-    # print("train data generated")
-    # # datasets.get_region(place_coords,200,dataset_.directory_path)
-    # # datasets.get_region_num(dataset_.directory_path)
-    # print("geo file generated")
-    
-    # G.fit_distance_distribution(train_matrix, np.array(place_coords))
-    
-    # print("train start")
-    # # train_NAIS_distance(train_matrix, test_positive, test_negative, val_positive, val_negative, dataset_)
-    # train_NAIS_region_distance(train_matrix, test_positive, val_positive, dataset_)
-    # # train_NAIS_region_disentangled_distance(train_matrix, test_positive, test_negative, val_positive, val_negative, dataset_)
-    
-    # # train_NAIS_region(train_matrix, test_positive, val_positive, dataset_)
-    # # train_NAIS(train_matrix, test_positive, val_positive, dataset_)
-    # # train_BPR(train_matrix, test_positive, val_positive, dataset_)
-    # # train_GPR(train_matrix, test_positive, val_positive, dataset_)
-    # # train_GeoIE(train_matrix, test_positive, val_positive, dataset_)
-    # ############################################################################
-    # G = PowerLaw()
-    # print("data loading")
-    # dataset_ = datasets.Dataset(15359,14586,"./data/Yelp/")
-    # train_matrix, test_positive, val_positive, place_coords = dataset_.generate_data(0)
-    # pickle_save((train_matrix, test_positive, val_positive, place_coords,dataset_),"dataset_Yelp.pkl")
-    # train_matrix, test_positive, val_positive, place_coords, dataset_ = pickle_load("dataset_Yelp.pkl")
-    # print("train data generated")
-    # # datasets.get_region(place_coords,200,dataset_.directory_path)
-    # # datasets.get_region_num(dataset_.directory_path)
-    # print("geo file generated")
-    
-    # G.fit_distance_distribution(train_matrix, np.array(place_coords))
-    
-    # print("train start")
-    # # train_NAIS_distance(train_matrix, test_positive, test_negative, val_positive, val_negative, dataset_)
-    # train_NAIS_region_distance(train_matrix, test_positive, val_positive, dataset_)
-    # # train_NAIS_region_disentangled_distance(train_matrix, test_positive, test_negative, val_positive, val_negative, dataset_)
-    
-    # # train_NAIS_region(train_matrix, test_positive, val_positive, dataset_)
-    # # train_NAIS(train_matrix, test_positive, val_positive, dataset_)
-    # # train_BPR(train_matrix, test_positive, val_positive, dataset_)
-    # # train_GPR(train_matrix, test_positive, val_positive, dataset_)
-    # # train_GeoIE(train_matrix, test_positive, val_positive, dataset_)
-
-    ############################################################################
     G = PowerLaw()
     print("data loading")
     # dataset_ = datasets.Dataset(6638,21102,"./data/NewYork/")
     # train_matrix, test_positive, val_positive, place_coords = dataset_.generate_data(0)
     # pickle_save((train_matrix, test_positive, val_positive, place_coords,dataset_),"dataset_NewYork.pkl")
-    train_matrix, test_positive, val_positive, place_coords, dataset_ = pickle_load("dataset_NewYork.pkl")
+    # train_matrix, test_positive, val_positive, place_coords, dataset_ = pickle_load("dataset_NewYork.pkl")
+    dataset_ = datasets.Dataset(15359,14586,"./data/Yelp/")
+    train_matrix, test_positive, val_positive, place_coords = dataset_.generate_data(0)
+    pickle_save((train_matrix, test_positive, val_positive, place_coords,dataset_),"dataset_Yelp.pkl")
+    train_matrix, test_positive, val_positive, place_coords, dataset_ = pickle_load("dataset_Yelp.pkl")
+    # dataset_ = datasets.Dataset(3725,10768,"./data/Tokyo/")
+    # train_matrix, test_positive, val_positive, place_coords = dataset_.generate_data(0)
+    # pickle_save((train_matrix, test_positive, val_positive, place_coords,dataset_),"dataset_Tokyo.pkl")
+    # train_matrix, test_positive, val_positive, place_coords, dataset_ = pickle_load("dataset_Tokyo.pkl")
     print("train data generated")
     datasets.get_region(place_coords,300,dataset_.directory_path)
     datasets.get_region_num(dataset_.directory_path)
     print("geo file generated")
     
     G.fit_distance_distribution(train_matrix, np.array(place_coords))
-    
+    args=Args()
+    args.lamda = 0.001
     print("train start")
     # train_NAIS_distance(train_matrix, test_positive, test_negative, val_positive, val_negative, dataset_)
-    train_NAIS_region_distance(train_matrix, test_positive, val_positive, dataset_)
+    train_NAIS_region_distance(train_matrix, test_positive, val_positive, dataset_,args)
     # train_NAIS_region_disentangled_distance(train_matrix, test_positive, test_negative, val_positive, val_negative, dataset_)
     
     # train_NAIS_region(train_matrix, test_positive, val_positive, dataset_)
