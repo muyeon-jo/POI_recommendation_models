@@ -1,5 +1,5 @@
-from batches import get_NAIS_batch_test_region,get_NAIS_batch_test, get_GPR_batch_test,get_GeoIE_batch_test
-import torch
+from batches import *
+import torch.cuda
 import eval_metrics
 import numpy as np
 
@@ -186,4 +186,25 @@ def GeoIE_validation_(model, args,num_users,test_data, test_positive, val_positi
     
     precision_v, recall_v, hit_v = eval_metrics.evaluate_mp(val_positive,recommended_list,k_list)
     precision_t, recall_t, hit_t = eval_metrics.evaluate_mp(test_positive,recommended_list,k_list)
+    return precision_v, recall_v, hit_v, precision_t, recall_t, hit_t
+
+
+def New1_validation(model, args,num_users, test_positive, val_positive, train_matrix, businessRegionEmbedList,k_list):
+    with torch.no_grad():
+        model.eval() # 모델을 평가 모드로 설정
+
+        recommended_list = []
+        train_loss=0.0
+        for user_id in range(num_users):
+            user_history, target_list, train_label, user_history_region, train_data_region, visit_rate = get_New1_test(train_matrix,user_id, businessRegionEmbedList)
+
+            prediction = model(user_history, target_list, user_history_region, train_data_region, visit_rate)
+            # loss = model.loss_func(prediction,train_label)
+            # train_loss += loss.item()
+        
+            _, indices = torch.topk(prediction, args.topk)
+            recommended_list.append([target_list[i].item() for i in indices])
+
+        precision_v, recall_v, hit_v = eval_metrics.evaluate_mp(val_positive,recommended_list,k_list)
+        precision_t, recall_t, hit_t = eval_metrics.evaluate_mp(test_positive,recommended_list,k_list)
     return precision_v, recall_v, hit_v, precision_t, recall_t, hit_t

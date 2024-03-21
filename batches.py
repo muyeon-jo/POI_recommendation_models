@@ -299,3 +299,85 @@ def get_GeoIE_batch_test_(train_matrix, dist_mat):
         batch.append((user_id, user_history, train_data, train_label, freq, distances))
 
     return batch
+
+def get_New1_batch(train_matrix, num_poi, uid, negative_num, businessRegionEmbedList):
+    DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    item_list = np.arange(num_poi).tolist()
+    li = train_matrix.sum(axis = 0)
+    item_visit_num = np.array(li.data.tolist()).reshape(-1)
+
+    positives = train_matrix.getrow(uid).indices.tolist()
+    pos_visit_num = np.array(train_matrix.getrow(uid).data.tolist())
+    visit_rate = pos_visit_num / item_visit_num[positives]
+
+    random.shuffle(positives)
+    histories = np.array([positives]).repeat(len(positives)*(negative_num+1),axis=0)
+
+    negative = list(set(item_list)-set(positives))
+    random.shuffle(negative)
+
+    negative = negative[:len(positives)*negative_num]
+    negatives = np.array(negative).reshape([-1,negative_num])
+
+    a= np.array(positives).reshape(-1,1)
+    data = np.concatenate((a, negatives),axis=-1)
+    data = data.reshape(-1)
+
+    positive_label = np.array([1]).repeat(len(positives)).reshape(-1,1)
+    negative_label = np.array([0]).repeat(len(positives)*negative_num).reshape(-1,negative_num)
+    labels = np.concatenate((positive_label,negative_label),axis=-1).reshape(-1)
+    
+    user_history = histories
+    train_data = data
+    train_label = torch.tensor(labels,dtype=torch.float32).to(DEVICE)
+    
+    user_history_region = businessRegionEmbedList[positives]
+    
+    user_history_region = np.array([user_history_region]).repeat(len(user_history),axis=0)
+
+    train_data_region = businessRegionEmbedList[train_data.tolist()]
+
+    user_history=torch.LongTensor(user_history).to(DEVICE)
+    train_data=torch.LongTensor(train_data).to(DEVICE)
+    user_history_region=torch.LongTensor(user_history_region).to(DEVICE)
+    train_data_region=torch.LongTensor(train_data_region).to(DEVICE)
+    visit_rate = torch.tensor(visit_rate).to(DEVICE)
+
+    return user_history, train_data, train_label, user_history_region, train_data_region, visit_rate
+
+def get_New1_test(train_matrix, uid, businessRegionEmbedList):
+    DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    li = train_matrix.sum(axis = 0)
+    item_visit_num = np.array(li.data.tolist()).reshape(-1)
+
+    history = train_matrix.getrow(uid).indices.tolist()
+    negative = list(set(range(train_matrix.shape[1]))-set(history))
+    histories = np.array([history]).repeat(len(negative),axis=0)
+    
+
+    pos_visit_num = np.array(train_matrix.getrow(uid).data.tolist())
+    visit_rate = pos_visit_num / item_visit_num[history]
+
+    negative_label = np.array([0]).repeat(len(negative))
+
+    user_history = histories
+    train_data = negative
+    train_label = torch.tensor(negative_label,dtype=torch.float32).to(DEVICE)
+    
+    user_history_region = businessRegionEmbedList[history]
+    # for i in history:
+    #     user_history_region.append(businessRegionEmbedList[i])
+    
+    user_history_region = np.array([user_history_region]).repeat(len(user_history),axis=0)
+
+    train_data_region = businessRegionEmbedList[train_data]
+    # for i in train_data:
+    #     train_data_region.append(businessRegionEmbedList[i])
+
+    user_history=torch.LongTensor(user_history).to(DEVICE)
+    train_data=torch.LongTensor(train_data).to(DEVICE)
+    user_history_region=torch.LongTensor(user_history_region).to(DEVICE)
+    train_data_region=torch.LongTensor(train_data_region).to(DEVICE)
+    visit_rate=torch.tensor(visit_rate).to(DEVICE)
+    
+    return user_history, train_data, train_label, user_history_region, train_data_region, visit_rate
