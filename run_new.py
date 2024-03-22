@@ -166,8 +166,8 @@ class testDataset(Dataset):
 
 class Args:
     def __init__(self):
-        self.lr = 0.003# learning rate            
-        self.lamda = 1e-04 # model regularization rate
+        self.lr = 0.001# learning rate            
+        self.lamda = 1e-05 # model regularization rate
         self.batch_size = 4096 # batch size for training
         self.epochs = 100 # training epoches
         self.topk = 50 # compute metrics@top_k
@@ -316,8 +316,38 @@ if __name__ == '__main__':
     G.fit_distance_distribution(train_matrix, np.array(place_coords))
     
     print("train start")
-    # train_NAIS_distance(train_matrix, test_positive, test_negative, val_positive, val_negative, dataset_)
-    # train_NAIS_region_distance(train_matrix, test_positive, val_positive, dataset_)
-    # train_NAIS_region_disentangled_distance(train_matrix, test_positive, test_negative, val_positive, val_negative, dataset_)
+    
+    train_NAIS_new(train_matrix, test_positive, val_positive, dataset_)
+
+
+    G = PowerLaw()
+    print("data loading")
+    dataset_ = datasets.Dataset(15359,14586,"./data/Yelp/")
+    train_matrix, test_positive, val_positive, place_coords = dataset_.generate_data(0)
+    pickle_save((train_matrix, test_positive, val_positive, place_coords,dataset_),"dataset_Yelp.pkl")
+    train_matrix, test_positive, val_positive, place_coords, dataset_ = pickle_load("dataset_Yelp.pkl")
+    print("train data generated")
+    datasets.get_region(place_coords,300,dataset_.directory_path)
+    datasets.get_region_num(dataset_.directory_path)
+    print("geo file generated")
+    
+    G.fit_distance_distribution(train_matrix, np.array(place_coords))
+    print("train start")
+    
+    train_NAIS_new(train_matrix, test_positive, val_positive, dataset_)
+
+    G = PowerLaw()
+    print("data loading")
+    dataset_ = datasets.Dataset(6638,21102,"./data/NewYork/")
+    train_matrix, test_positive, val_positive, place_coords = dataset_.generate_data(0)
+    pickle_save((train_matrix, test_positive, val_positive, place_coords,dataset_),"dataset_NewYork.pkl")
+    train_matrix, test_positive, val_positive, place_coords, dataset_ = pickle_load("dataset_NewYork.pkl")
+    print("train data generated")
+    datasets.get_region(place_coords,300,dataset_.directory_path)
+    datasets.get_region_num(dataset_.directory_path)
+    print("geo file generated")
+    
+    G.fit_distance_distribution(train_matrix, np.array(place_coords))
+    print("train start")
     
     train_NAIS_new(train_matrix, test_positive, val_positive, dataset_)
