@@ -166,8 +166,8 @@ class testDataset(Dataset):
 
 class Args:
     def __init__(self):
-        self.lr = 0.001# learning rate            
-        self.lamda = 1e-05 # model regularization rate
+        self.lr = 0.0001# learning rate            
+        self.lamda = 1e-04 # model regularization rate
         self.batch_size = 4096 # batch size for training
         self.epochs = 100 # training epoches
         self.topk = 50 # compute metrics@top_k
@@ -302,22 +302,22 @@ if __name__ == '__main__':
     torch.cuda.manual_seed_all(seed)
     
     # DEVICE = 'cpu'
-    G = PowerLaw()
-    print("data loading")
-    # dataset_ = datasets.Dataset(3725,10768,"./data/Tokyo/")
-    # train_matrix, test_positive, val_positive, place_coords = dataset_.generate_data(0)
-    # pickle_save((train_matrix, test_positive, val_positive, place_coords,dataset_),"dataset_Tokyo.pkl")
-    train_matrix, test_positive, val_positive, place_coords, dataset_ = pickle_load("dataset_Tokyo.pkl")
-    print("train data generated")
-    # datasets.get_region(place_coords,300,dataset_.directory_path)
-    # datasets.get_region_num(dataset_.directory_path)
-    print("geo file generated")
+    # G = PowerLaw()
+    # print("data loading")
+    # # dataset_ = datasets.Dataset(3725,10768,"./data/Tokyo/")
+    # # train_matrix, test_positive, val_positive, place_coords = dataset_.generate_data(0)
+    # # pickle_save((train_matrix, test_positive, val_positive, place_coords,dataset_),"dataset_Tokyo.pkl")
+    # train_matrix, test_positive, val_positive, place_coords, dataset_ = pickle_load("dataset_Tokyo.pkl")
+    # print("train data generated")
+    # # datasets.get_region(place_coords,300,dataset_.directory_path)
+    # # datasets.get_region_num(dataset_.directory_path)
+    # print("geo file generated")
     
-    G.fit_distance_distribution(train_matrix, np.array(place_coords))
+    # G.fit_distance_distribution(train_matrix, np.array(place_coords))
     
-    print("train start")
+    # print("train start")
     
-    train_NAIS_new(train_matrix, test_positive, val_positive, dataset_)
+    # train_NAIS_new(train_matrix, test_positive, val_positive, dataset_)
 
 
     G = PowerLaw()
