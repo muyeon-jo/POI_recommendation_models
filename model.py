@@ -963,7 +963,7 @@ class New2(nn.Module):
         target_region_idx = target_region.squeeze(0)
 
         history_visit_rate = history_visit_rate.squeeze(0)
-        prediction = self.attention_network(history_tensor,target_tensor, history_region_idx, target_region_idx,history_visit_rate.type(torch.float32),dist_mat,uid)
+        prediction = self.attention_network(history_tensor,target_tensor, history_region_idx, target_region_idx,history_visit_rate.type(torch.float32),dist_mat.type(torch.float32),uid)
         return self.sigmoid(prediction)
 
     def attention_network(self, user_history, target_item, history_region, target_region, history_visit_rate,dist,uid):
@@ -1005,7 +1005,7 @@ class New2(nn.Module):
         attn_weights = attn_weights.reshape([batch_dim,-1, 1])# (b * n * 1)
 
         geo_weights = torch.exp(-1/(self.relu(target_dist_emb @ history_dist_emb)+1.0)*dist.reshape(batch_dim,-1)).reshape([batch_dim,-1, 1])
-        result1 = value_emb * attn_weights# (b * n * d)
+        result1 = value_emb * (attn_weights + geo_weights)# (b * n * d)
         r = history_visit_rate.repeat(batch_dim,1).reshape(batch_dim,-1,1)
         result2 = history * r# (b * n * d)
         result = result1 + result2 # (b * n * d)
@@ -1025,3 +1025,56 @@ class New2(nn.Module):
     def loss_function(self, prediction, label):
         return self.loss_func(prediction, label)
     
+
+
+class New3(nn.Module):
+    def __init__(self, user_num, item_num, factor_num):
+        super(New3, self).__init__()
+        """
+        user_num: 사용자 수
+        item_num: 아이템 수
+        factor_num: 예측할 factors의 수
+        """
+        self.user_num = user_num
+        self.item_num = item_num
+        self.embed_dim = factor_num
+        self.embed_user = nn.Embedding(user_num, factor_num)
+        self.embed_item = nn.Embedding(item_num, factor_num)
+
+        self.embed_ingoing = nn.Embedding(item_num,factor_num)
+        self.embed_outgoing = nn.Embedding(item_num,factor_num)
+
+        self.query = nn.Linear(factor_num*2,factor_num*2)
+        self.key = nn.Linear(factor_num*2,factor_num*2)
+        self.value = nn.Linear(factor_num*2,factor_num*2)
+
+        nn.init.normal_(self.embed_user.weight, std=0.01)
+        nn.init.normal_(self.embed_item.weight, std=0.01)
+        nn.init.normal_(self.embed_ingoing.weight, std=0.01)
+        nn.init.normal_(self.embed_outgoing.weight, std=0.01)
+
+        self.sigmoid = nn.Sigmoid()
+        self.softmax = nn.Softmax()
+
+    def forward(self, user, item_i, item_j):
+        """
+        """
+        #일단은 다른 POI 전부로 부터 관련있는지 확인, 나중에 수정
+        user = self.embed_user(user)
+        positive = torch.cat((self.embed_ingoing(item_i),self.embed_outgoing(item_i)),dim=-1)
+        negative = torch.cat((self.embed_ingoing(item_j),self.embed_outgoing(item_j)),dim=-1)
+        
+        tt = self.self_attention(torch.arange(0,self.item_num))
+        prediction_i = (user * item_i).sum(dim=-1) # user * i matrix 생성
+        prediction_j = (user * item_j).sum(dim=-1) # user * j matrix 생성
+
+        return prediction_i, prediction_j
+    def self_attention(self, input):
+        q = self.query(input)
+        k = self.key(input)
+        v = self.value(input)
+
+        attn_result = (self.softmax(q.dot(k.T)/torch.sqrt(self.embed_dim))*v).sum()
+        return attn_result
+    def bpr_loss(self,prediction_i,prediction_j):
+        return - self.sigmoid(prediction_i - prediction_j).log().sum()
