@@ -2,6 +2,8 @@ import torch
 import torch.nn as nn
 import numpy as np
 from torch_geometric.nn import GCNConv
+from torchmetrics.functional.pairwise import pairwise_manhattan_distance
+from haversine import haversine
 
 class NAIS_basic(nn.Module):
     def __init__(self, item_num, embed_size, hidden_size, beta): # embed_size : 64, beta : 0.5
@@ -921,18 +923,18 @@ class New1(nn.Module):
     def loss_function(self, prediction, label):
         return self.loss_func(prediction, label)
 
-class New_test(nn.Module):
-    def __init__(self, item_num, embed_size, hidden_size, beta, region_embed_size): # embed_size : 64, beta : 0.5
-        super(New_test, self).__init__()
+class New2(nn.Module):
+    def __init__(self, item_num, embed_size, hidden_size, beta, region_embed_size, user_num): # embed_size : 64, beta : 0.5
+        super(New2, self).__init__()
         self.embed_size = embed_size # concat 연산 시 * 2
         self.item_num = item_num
         self.beta = beta
         self.hidden_size=hidden_size
-        self.embed_history = nn.Embedding(item_num, int(embed_size/2)) # (m:14586 * d:64), 과거 방문한 데이터(q), 유저별로 각각 하나씩 가져야하나 ?
-        self.embed_target = nn.Embedding(item_num, int(embed_size/2)) # (m:14586 * d:64), 예측 데이터(p)
+        self.user_num = user_num
+        self.embed_target = nn.Embedding(item_num, int(embed_size/2)) 
         
         self.embed_region = nn.Embedding(region_embed_size, int(embed_size/2)) # 
-
+        self.embed_dist = nn.Parameter(torch.normal(0.0,0.01,(user_num,region_embed_size)))
         self.relu = nn.ReLU()
         self.sigmoid = nn.Sigmoid()
         self.loss_func = nn.BCELoss() # binary cross entropy
@@ -941,14 +943,10 @@ class New_test(nn.Module):
         self.attn_Q = nn.Linear(embed_size, hidden_size, bias = False)
         self.attn_K = nn.Linear(embed_size, hidden_size, bias = False)
         self.attn_V = nn.Linear(embed_size, embed_size, bias = False)
-        self.attn_layer1 = nn.Linear(embed_size, hidden_size)
-        self.attn_layer2 = nn.Linear(hidden_size, 1, bias = False)
-
         self._init_weight_()
 
     def _init_weight_(self):
         # weight 초기화, 표준편차 : 0.01
-        nn.init.normal_(self.embed_history.weight, std=0.01)
         nn.init.normal_(self.embed_target.weight, std=0.01)
         nn.init.normal_(self.embed_region.weight, std=0.01)
         
@@ -957,47 +955,47 @@ class New_test(nn.Module):
             if isinstance(m, nn.Linear) and m.bias is not None:
                 m.bias.data.zero_()
 
-    def forward(self, history, target, history_region, target_region):
-        #배치 사이즈만큼 잘라서 넣어줌
-        #print(len(history), len(target))
-        history_tensor = history
-        target_tensor = target
+    def forward(self, history, target, history_region, target_region, history_visit_rate, dist_mat,uid):
+        history_tensor = history.squeeze(0)
+        target_tensor = target.squeeze(0)
         
-        history_region_idx = history_region
-        target_region_idx = target_region
+        history_region_idx = history_region.squeeze(0)
+        target_region_idx = target_region.squeeze(0)
 
-        prediction = self.attention_network(history_tensor,target_tensor, history_region_idx, target_region_idx)
+        history_visit_rate = history_visit_rate.squeeze(0)
+        prediction = self.attention_network(history_tensor,target_tensor, history_region_idx, target_region_idx,history_visit_rate.type(torch.float32),dist_mat,uid)
         return self.sigmoid(prediction)
 
-    def attention_network(self, user_history, target_item, history_region, target_region):
+    def attention_network(self, user_history, target_item, history_region, target_region, history_visit_rate,dist,uid):
         """
         b: batch size (= input_item_num)
         h: history size (h * 5 = item_num = batch_size)
         d: embedding size
         """
         
-        history_ = self.embed_history(user_history) # (b * n * d)
+        history_ = self.embed_target(user_history) # (b * n * d)
         region = self.embed_region(history_region) # (b * n * d)
+        history_dist_emb = self.embed_dist[uid][history_region]
         history = torch.cat((history_, region), -1)
 
         target_ = self.embed_target(target_item) # (b * 1 * d)
         target_region_ = self.embed_region(target_region) # (b * 1 * d)
+        target_dist_emb = self.embed_dist[uid][target_region]
         target = torch.cat((target_, target_region_),-1)
 
         batch_dim = len(target)
         embed_dim = target.shape[1]
         target = torch.reshape(target,(batch_dim, 1,-1))
-        Q = self.attn_Q(target)
-        K = self.attn_K(history)
-        V = self.attn_V(history)
+
+        query_emb = self.attn_Q(target)
+        key_emb = self.attn_K(history)
+        value_emb = self.attn_V(history)
         
         
-        result1 = torch.bmm(Q,torch.reshape(K,(batch_dim,embed_dim,-1))) # (n * 1) 
+        result1 = torch.bmm(query_emb,torch.reshape(key_emb,(batch_dim,embed_dim,-1))) # (n * 1) 
         result2 = result1/torch.sqrt(torch.tensor(embed_dim))
         result2 = result2.squeeze()
-        
-        exp_A = torch.exp(result2) # (b * n * 1)
-        exp_A = exp_A.squeeze(dim=-1)# (b * n )
+        exp_A = torch.exp(result2) # (b * n)
         mask = self.get_mask(user_history,target_item)
         exp_A = exp_A * mask
         exp_sum = torch.sum(exp_A,dim=-1) # (b * 1)
@@ -1005,11 +1003,19 @@ class New_test(nn.Module):
         
         attn_weights = torch.divide(exp_A.T,exp_sum).T # (b * n)
         attn_weights = attn_weights.reshape([batch_dim,-1, 1])# (b * n * 1)
-        result = history * attn_weights# (b * n * d)
+
+        geo_weights = torch.exp(-1/(self.relu(target_dist_emb @ history_dist_emb)+1.0)*dist.reshape(batch_dim,-1)).reshape([batch_dim,-1, 1])
+        result1 = value_emb * attn_weights# (b * n * d)
+        r = history_visit_rate.repeat(batch_dim,1).reshape(batch_dim,-1,1)
+        result2 = history * r# (b * n * d)
+        result = result1 + result2 # (b * n * d)
+        
         target = target.reshape([batch_dim,-1,1]) # (b * d * 1)
         
         prediction = torch.bmm(result, target).squeeze(dim=-1) # (b * n * 1) -> (b * n)
         prediction = torch.sum(prediction, dim = -1) # (b)
+
+
         return prediction
 
     def get_mask(self, user_history, target_item):
@@ -1018,3 +1024,4 @@ class New_test(nn.Module):
         return mask
     def loss_function(self, prediction, label):
         return self.loss_func(prediction, label)
+    
