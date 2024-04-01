@@ -336,10 +336,10 @@ class testDataset3(Dataset):
 
 class Args:
     def __init__(self):
-        self.lr = 0.001# learning rate            
-        self.lamda = 1e-04 # model regularization rate
-        self.batch_size = 4096 # batch size for training
-        self.epochs = 100 # training epoches
+        self.lr = 0.01# learning rate            
+        self.lamda = 0.0 # model regularization rate
+        self.batch_size = 64 # batch size for training
+        self.epochs = 200 # training epoches
         self.topk = 50 # compute metrics@top_k
         self.factor_num = 128 # predictive factors numbers in the model
         self.hidden_dim = 128 # predictive factors numbers in the model
@@ -619,6 +619,7 @@ def train_NAIS_new3(train_matrix, test_positive, val_positive, dataset):
         model.cuda()
 
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.lamda)
+    # optimizer = torch.optim.SGD(model.parameters(), lr=args.lr, weight_decay=args.lamda)
 
     for e in range(args.epochs):
         model.train()
@@ -642,7 +643,7 @@ def train_NAIS_new3(train_matrix, test_positive, val_positive, dataset):
             user, item_i, item_j = get_BPR_batch(train_matrix,num_items,buid)
             optimizer.zero_grad() # 그래디언트 초기화
             prediction_i, prediction_j = model(user, item_i, item_j)
-            loss = model.bpr_loss(prediction_i,prediction_j) # BPR 손실 함수 계산
+            loss = model.loss_function(prediction_i,prediction_j) # BPR 손실 함수 계산
             train_loss += loss.item()
             loss.backward() # 역전파 및 그래디언트 계산
             optimizer.step() # 옵티마이저 업데이트
@@ -654,39 +655,19 @@ def train_NAIS_new3(train_matrix, test_positive, val_positive, dataset):
             model.eval() # 모델을 평가 모드로 설정
             with torch.no_grad():
                 start_time = int(time.time())
-                # recommended_list = []
-                # for user_id in range(num_users):
-                #     user_history, target_list, train_label, user_history_region, train_data_region, visit_rate = get_New1_test(train_matrix,user_id, businessRegionEmbedList)
-
-                #     prediction = model(user_history, target_list, user_history_region, train_data_region, visit_rate)
-                #     # loss = model.loss_func(prediction,train_label)
-                #     # train_loss += loss.item()
-                
-                #     _, indices = torch.topk(prediction, args.topk)
-                #     recommended_list.append([target_list[i].item() for i in indices])
-                #     del (user_history, target_list, train_label, user_history_region, train_data_region, visit_rate) # 학습 데이터 삭제
-                #     torch.cuda.empty_cache() # GPU 캐시 데이터 삭제
-                # precision_v, recall_v, hit_v = eval_metrics.evaluate_mp(val_positive,recommended_list,k_list)
-                # precision_t, recall_t, hit_t = eval_metrics.evaluate_mp(test_positive,recommended_list,k_list)
-
                 recommended_list = []
-                for user_id,(user_history, target_list, _, user_history_region, train_data_region, visit_rate, dist_mat, uid) in enumerate(test_dataloader):
-                    # user_history, target_list, train_label, user_history_region, train_data_region, visit_rate = get_New1_test(train_matrix,user_id, businessRegionEmbedList)
-                    user_history=user_history.squeeze(0).to(DEVICE)
-                    target_list=target_list.squeeze(0).to(DEVICE)
-                    
-                    user_history_region=user_history_region.squeeze(0).to(DEVICE)
-                    train_data_region=train_data_region.squeeze(0).to(DEVICE)
-                    visit_rate=visit_rate.squeeze(0).to(DEVICE)
-                    dist_mat = dist_mat.squeeze(0).to(DEVICE)
-                    uid =uid.squeeze(0).to(DEVICE)
+                for user_id in range(num_users):
+                    history = train_matrix.getrow(user_id).indices.tolist()
+                    target_list = list(set(range(train_matrix.shape[1])) - set(history))
+                    user_tensor = torch.LongTensor([user_id] * (len(target_list))).to(DEVICE)
+                    target_tensor = torch.LongTensor(target_list).to(DEVICE)
 
-                    prediction = model(user_history, target_list, user_history_region, train_data_region, visit_rate,dist_mat,uid)
-                
+                    prediction, _ = model(user_tensor, target_tensor,target_tensor)
+
                     _, indices = torch.topk(prediction, args.topk)
-                    recommended_list.append([target_list[i].item() for i in indices])
-                    del (user_history, target_list, user_history_region, train_data_region, visit_rate,dist_mat,uid) # 학습 데이터 삭제
-                    torch.cuda.empty_cache() # GPU 캐시 데이터 삭제
+                    recommended_list.append([target_list[i] for i in indices])
+
+                
                 precision_v, recall_v, hit_v = eval_metrics.evaluate_mp(val_positive,recommended_list,k_list)
                 precision_t, recall_t, hit_t = eval_metrics.evaluate_mp(test_positive,recommended_list,k_list)
                 # precision_v, recall_v, hit_v, precision_t, recall_t, hit_t = val.New1_validation(model,args,num_users,test_positive,val_positive,train_matrix,businessRegionEmbedList,k_list)
@@ -701,6 +682,32 @@ def train_NAIS_new3(train_matrix, test_positive, val_positive, dataset):
                     f.write("recall:" + str(recall_t)+"\n")
                     f.write("hit:" + str(hit_t)+"\n")
                     f.close()
+                    ingoing,outgoing = model.topk_intersection()
+
+                    f1=open(result_directory+"/ingoing_intersection.txt","w")
+                    f1.write("ingoing\n")
+                    for li in ingoing.indices.tolist():
+                        f1.write(str(li)+"\n")
+                    f1.close()
+
+                    f1=open(result_directory+"/outgoing_intersection.txt","w")
+                    f1.write("outgoing\n")
+                    for li in outgoing.indices.tolist():
+                        f1.write(str(li)+"\n")
+                    f1.close()
+
+                    f1=open(result_directory+"/intersection.txt","w")
+                    f1.write("intersection\n")
+                    sum = 0
+                    for li in range(len(outgoing.indices.tolist())):
+                        a = outgoing.indices[li].detach().cpu().numpy()
+                        b = ingoing.indices[li].detach().cpu().numpy()
+                        inter = np.intersect1d(a,b)
+                        sum+=len(inter)
+                        f1.write(str(len(inter))+" "+str(inter)+"\n")
+                    f1.write("sum: "+str(sum)+"\n")
+                    f1.write("avr: "+str(sum/num_items)+"\n")
+                    f1.close()
                 end_time = int(time.time())
                 print("eval time: {} sec".format(end_time-start_time))
 

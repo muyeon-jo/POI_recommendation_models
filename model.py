@@ -1041,12 +1041,12 @@ class New3(nn.Module):
         self.embed_user = nn.Embedding(user_num, factor_num)
         self.embed_item = nn.Embedding(item_num, factor_num)
 
-        self.embed_ingoing = nn.Embedding(item_num,factor_num)
-        self.embed_outgoing = nn.Embedding(item_num,factor_num)
+        self.embed_ingoing = nn.Embedding(item_num,int(factor_num/2))
+        self.embed_outgoing = nn.Embedding(item_num,int(factor_num/2))
 
-        self.query = nn.Linear(factor_num*2,factor_num*2)
-        self.key = nn.Linear(factor_num*2,factor_num*2)
-        self.value = nn.Linear(factor_num*2,factor_num*2)
+        self.query = nn.Linear(factor_num,factor_num)
+        self.key = nn.Linear(factor_num,factor_num)
+        self.value = nn.Linear(factor_num,factor_num)
 
         nn.init.normal_(self.embed_user.weight, std=0.01)
         nn.init.normal_(self.embed_item.weight, std=0.01)
@@ -1054,27 +1054,45 @@ class New3(nn.Module):
         nn.init.normal_(self.embed_outgoing.weight, std=0.01)
 
         self.sigmoid = nn.Sigmoid()
-        self.softmax = nn.Softmax()
+        self.softmax = nn.Softmax(dim=-1)
+        self.loss_func = nn.BCELoss(reduction="sum")
 
     def forward(self, user, item_i, item_j):
         """
         """
-        #일단은 다른 POI 전부로 부터 관련있는지 확인, 나중에 수정
         user = self.embed_user(user)
-        positive = torch.cat((self.embed_ingoing(item_i),self.embed_outgoing(item_i)),dim=-1)
-        negative = torch.cat((self.embed_ingoing(item_j),self.embed_outgoing(item_j)),dim=-1)
         
-        tt = self.self_attention(torch.arange(0,self.item_num))
-        prediction_i = (user * item_i).sum(dim=-1) # user * i matrix 생성
-        prediction_j = (user * item_j).sum(dim=-1) # user * j matrix 생성
+        tt = self.self_attention(self.embed_ingoing(torch.arange(0,self.item_num).cuda()),self.embed_outgoing(torch.arange(0,self.item_num).cuda()))
+
+        pos = tt[item_i]
+        neg = tt[item_j]
+        prediction_i = (user * pos).sum(dim=-1)
+        prediction_j = (user * neg).sum(dim=-1)
 
         return prediction_i, prediction_j
-    def self_attention(self, input):
-        q = self.query(input)
-        k = self.key(input)
-        v = self.value(input)
+    def self_attention(self, ingoing, outgoing):
+        # q = self.query(torch.cat((ingoing,outgoing),dim=-1))
+        # k = self.key(torch.cat((outgoing,ingoing),dim=-1))
+        # v = self.value(torch.cat((ingoing,outgoing),dim=-1))
 
-        attn_result = (self.softmax(q.dot(k.T)/torch.sqrt(self.embed_dim))*v).sum()
-        return attn_result
+        q = torch.cat((ingoing,outgoing),dim=-1)
+        k = torch.cat((outgoing,ingoing),dim=-1)
+        v = torch.cat((ingoing,outgoing),dim=-1)
+        t3 = self.softmax(q @ k.T/torch.sqrt(torch.tensor(self.embed_dim)))
+        
+        t4 = t3@v
+        return t4
     def bpr_loss(self,prediction_i,prediction_j):
         return - self.sigmoid(prediction_i - prediction_j).log().sum()
+    def loss_function(self, prediction_i, prediction_j):
+        prediction = self.sigmoid(torch.cat((prediction_i,prediction_j),dim=-1))
+        label = torch.cat((torch.ones(len(prediction_i)), torch.zeros(len(prediction_j))),dim=-1).cuda()
+        return self.loss_func(prediction, label)
+    def topk_intersection(self):
+        ingoing = self.embed_ingoing(torch.arange(0,self.item_num).cuda())
+        outgoing = self.embed_outgoing(torch.arange(0,self.item_num).cuda())
+        i_ingoing = ingoing @ outgoing.T
+        i_outgoing = outgoing @ ingoing.T
+        top_ingoing = torch.topk(i_ingoing,10,dim=-1)
+        top_outgoing = torch.topk(i_outgoing,10,dim=-1)
+        return top_ingoing, top_outgoing
