@@ -1237,7 +1237,8 @@ class New4(nn.Module):
         batch_dim = len(target)
         target = torch.reshape(target,(batch_dim, 1,-1))
         input = history * target # (b * n * d)
-        result1 = self.relu(self.drop(self.attn_layer1(input))) # (n * d)
+        input = self.drop(self.attn_layer1(input))
+        result1 = self.relu(input) # (n * d)
         
         result2 = self.attn_layer2(result1) # (n * 1) 
         
