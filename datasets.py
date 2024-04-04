@@ -414,6 +414,11 @@ class Dataset(object):
         for k, v in poi_coos.items():
             place_coords.append([v[0], v[1]])
         self.place_coos = place_coords
+        self.dist_matrix = np.zeros((self.poi_num,self.poi_num))
+        for i in range(self.poi_num):
+            for j in range(self.poi_num):
+                self.dist_matrix[i][j] = haversine(place_coords[i],place_coords[j])
+        self.nearPOI = np.argpartition(self.dist_matrix,50)[:,:50]
         return place_coords
 
     def generate_data(self, random_seed=0):

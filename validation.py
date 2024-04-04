@@ -208,3 +208,43 @@ def New1_validation(model, args,num_users, test_positive, val_positive, train_ma
         precision_v, recall_v, hit_v = eval_metrics.evaluate_mp(val_positive,recommended_list,k_list)
         precision_t, recall_t, hit_t = eval_metrics.evaluate_mp(test_positive,recommended_list,k_list)
     return precision_v, recall_v, hit_v, precision_t, recall_t, hit_t
+
+def BPR_validation(model, args,num_users, test_positive, val_positive, train_matrix, k_list):
+    model.eval() # 모델을 평가 모드로 설정
+    DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+    recommended_list = []
+    for user_id in range(num_users):
+        history = train_matrix.getrow(user_id).indices.tolist()
+        target_list = list(set(range(train_matrix.shape[1])) - set(history))
+        user_tensor = torch.LongTensor([user_id] * (len(target_list))).to(DEVICE)
+        target_tensor = torch.LongTensor(target_list).to(DEVICE)
+
+        prediction, _ = model(user_tensor, target_tensor,target_tensor)
+
+        _, indices = torch.topk(prediction, args.topk)
+        recommended_list.append([target_list[i] for i in indices])
+
+    
+    precision_v, recall_v, hit_v = eval_metrics.evaluate_mp(val_positive,recommended_list,k_list)
+    precision_t, recall_t, hit_t = eval_metrics.evaluate_mp(test_positive,recommended_list,k_list)
+    
+    return precision_v, recall_v, hit_v, precision_t, recall_t, hit_t
+
+def new4_validation(model, args,num_users, test_positive, val_positive, train_matrix, businessRegionEmbedList,k_list, nearPOI):
+    model.eval() # 모델을 평가 모드로 설정
+    recommended_list = []
+    train_loss=0.0
+    for user_id in range(num_users):
+        user_history, target_list, train_label, user_history_region, train_data_region = get_NAIS_batch_test_region(train_matrix,user_id, businessRegionEmbedList)
+
+        prediction = model(user_history, target_list, nearPOI, train_data_region)
+        # loss = model.loss_func(prediction,train_label)
+        # train_loss += loss.item()
+    
+        _, indices = torch.topk(prediction, args.topk)
+        recommended_list.append([target_list[i].item() for i in indices])
+        torch.cuda.empty_cache() # GPU 캐시 데이터 삭제
+    precision_v, recall_v, hit_v = eval_metrics.evaluate_mp(val_positive,recommended_list,k_list)
+    precision_t, recall_t, hit_t = eval_metrics.evaluate_mp(test_positive,recommended_list,k_list)
+    return precision_v, recall_v, hit_v, precision_t, recall_t, hit_t

@@ -1038,15 +1038,21 @@ class New3(nn.Module):
         self.user_num = user_num
         self.item_num = item_num
         self.embed_dim = factor_num
+        self.beta = 0.5
+
         self.embed_user = nn.Embedding(user_num, factor_num)
         self.embed_item = nn.Embedding(item_num, factor_num)
 
-        self.embed_ingoing = nn.Embedding(item_num,int(factor_num/2))
-        self.embed_outgoing = nn.Embedding(item_num,int(factor_num/2))
+        self.embed_ingoing = nn.Embedding(item_num,factor_num)
+        self.embed_outgoing = nn.Embedding(item_num,factor_num)
 
-        self.query = nn.Linear(factor_num,factor_num)
-        self.key = nn.Linear(factor_num,factor_num)
-        self.value = nn.Linear(factor_num,factor_num)
+        self.query = nn.Linear(factor_num*2,factor_num*2)
+        self.key = nn.Linear(factor_num*2,factor_num*2)
+        self.value = nn.Linear(factor_num*2,factor_num*2)
+
+        self.attn_Q = nn.Linear(factor_num*3,factor_num*3)
+        self.attn_K = nn.Linear(factor_num*3,factor_num*3)
+        self.attn_V = nn.Linear(factor_num*3,factor_num*3)
 
         nn.init.normal_(self.embed_user.weight, std=0.01)
         nn.init.normal_(self.embed_item.weight, std=0.01)
@@ -1055,21 +1061,23 @@ class New3(nn.Module):
 
         self.sigmoid = nn.Sigmoid()
         self.softmax = nn.Softmax(dim=-1)
-        self.loss_func = nn.BCELoss(reduction="sum")
+        self.loss_func = nn.BCELoss()
 
     def forward(self, user, item_i, item_j):
         """
         """
-        user = self.embed_user(user)
         
-        tt = self.self_attention(self.embed_ingoing(torch.arange(0,self.item_num).cuda()),self.embed_outgoing(torch.arange(0,self.item_num).cuda()))
+        region_embed = self.self_attention(self.embed_ingoing(torch.arange(0,self.item_num).cuda()),self.embed_outgoing(torch.arange(0,self.item_num).cuda()))
 
-        pos = tt[item_i]
-        neg = tt[item_j]
-        prediction_i = (user * pos).sum(dim=-1)
-        prediction_j = (user * neg).sum(dim=-1)
+        pos_region = region_embed[item_i]
+        neg_region = region_embed[item_j]
 
-        return prediction_i, prediction_j
+        return self.attention_network(user,item_i, item_j,region_embed[user],pos_region,neg_region)
+
+        # prediction_i = (user * pos).sum(dim=-1)
+        # prediction_j = (user * neg).sum(dim=-1)
+
+        # return prediction_i, prediction_j
     def self_attention(self, ingoing, outgoing):
         # q = self.query(torch.cat((ingoing,outgoing),dim=-1))
         # k = self.key(torch.cat((outgoing,ingoing),dim=-1))
@@ -1078,16 +1086,212 @@ class New3(nn.Module):
         q = torch.cat((ingoing,outgoing),dim=-1)
         k = torch.cat((outgoing,ingoing),dim=-1)
         v = torch.cat((ingoing,outgoing),dim=-1)
-        t3 = self.softmax(q @ k.T/torch.sqrt(torch.tensor(self.embed_dim)))
+        t3 = self.softmax(q @ k.T/torch.sqrt(torch.tensor(self.embed_dim*2)))
         
         t4 = t3@v
         return t4
+    def attention_network(self, user_history, pos_item, neg_item, history_region, pos_region, neg_region):
+        history_ = self.embed_item(user_history) # (b * n * d)
+        history = torch.cat((history_, history_region), -1)
+
+        pos = self.embed_item(pos_item) # (b * 1 * d)
+        neg = self.embed_item(neg_item) # (b * 1 * d)
+        pos_target = torch.cat((pos, pos_region),-1)
+        neg_target = torch.cat((neg, neg_region),-1)
+
+        batch_dim = len(pos_target)
+        embed_dim = pos_target.shape[1]
+        pos_target = torch.reshape(pos_target,(batch_dim, 1,-1))
+        neg_target = torch.reshape(neg_target,(batch_dim, 1,-1))
+
+        query_pos_emb = self.attn_Q(pos_target)
+        query_neg_emb = self.attn_Q(neg_target)
+        key_emb = self.attn_K(history)
+        value_emb = self.attn_V(history)
+        
+        
+        result_pos = torch.bmm(query_pos_emb,torch.reshape(key_emb,(batch_dim,embed_dim,-1))) # (n * 1) 
+        result_neg = torch.bmm(query_neg_emb,torch.reshape(key_emb,(batch_dim,embed_dim,-1))) # (n * 1) 
+        result_pos = result_pos/torch.sqrt(torch.tensor(embed_dim))
+        result_neg = result_neg/torch.sqrt(torch.tensor(embed_dim))
+        result_pos = result_pos.squeeze()
+        result_neg = result_neg.squeeze()
+        
+        exp_A = torch.exp(result_pos) # (b * n)
+        mask = self.get_mask(user_history,pos_item)
+        exp_A = exp_A * mask
+        exp_sum = torch.sum(exp_A,dim=-1) # (b * 1)
+        exp_sum = torch.pow(exp_sum, self.beta) # (b * 1)
+        
+        attn_weights = torch.divide(exp_A.T,exp_sum).T # (b * n)
+        attn_weights = attn_weights.reshape([batch_dim,-1, 1])# (b * n * 1)
+
+        result_pos = value_emb * attn_weights# (b * n * d)
+        
+        # 
+        exp_A = torch.exp(result_neg) # (b * n)
+        exp_sum = torch.sum(exp_A,dim=-1) # (b * 1)
+        exp_sum = torch.pow(exp_sum, self.beta) # (b * 1)
+        
+        attn_weights = torch.divide(exp_A.T,exp_sum).T # (b * n)
+        attn_weights = attn_weights.reshape([batch_dim,-1, 1])# (b * n * 1)
+
+        result_neg = value_emb * attn_weights# (b * n * d)
+        
+        prediction_i = torch.bmm(result_pos, pos_target.reshape([batch_dim,-1,1])).squeeze(dim=-1) # (b * n * 1) -> (b * n)
+        prediction_i = torch.sum(prediction_i, dim = -1) # (b)
+
+        prediction_j = torch.bmm(result_neg, neg_target.reshape([batch_dim,-1,1])).squeeze(dim=-1) # (b * n * 1) -> (b * n)
+        prediction_j = torch.sum(prediction_j, dim = -1) # (b)
+        return prediction_i, prediction_j
+
     def bpr_loss(self,prediction_i,prediction_j):
         return - self.sigmoid(prediction_i - prediction_j).log().sum()
     def loss_function(self, prediction_i, prediction_j):
         prediction = self.sigmoid(torch.cat((prediction_i,prediction_j),dim=-1))
         label = torch.cat((torch.ones(len(prediction_i)), torch.zeros(len(prediction_j))),dim=-1).cuda()
         return self.loss_func(prediction, label)
+    def topk_intersection(self):
+        ingoing = self.embed_ingoing(torch.arange(0,self.item_num).cuda())
+        outgoing = self.embed_outgoing(torch.arange(0,self.item_num).cuda())
+        i_ingoing = ingoing @ outgoing.T
+        i_outgoing = outgoing @ ingoing.T
+        top_ingoing = torch.topk(i_ingoing,10,dim=-1)
+        top_outgoing = torch.topk(i_outgoing,10,dim=-1)
+        return top_ingoing, top_outgoing
+    def get_mask(self, user_history, target_item):
+        target_item = target_item.reshape([len(target_item),1])
+        mask = user_history != target_item
+        return mask
+    
+
+class New4(nn.Module):
+    def __init__(self, item_num, embed_size, hidden_size, beta, region_embed_size): # embed_size : 64, beta : 0.5
+        super(New4, self).__init__()
+        self.embed_size = embed_size # concat 연산 시 * 2
+        self.item_num = item_num
+        self.beta = beta
+        self.hidden_size=hidden_size
+        self.embed_ingoing = nn.Embedding(item_num,int(embed_size/4))
+        self.embed_outgoing = nn.Embedding(item_num,int(embed_size/4))
+
+        self.embed_history = nn.Embedding(item_num, int(embed_size/2)) # (m:14586 * d:64), 과거 방문한 데이터(q), 유저별로 각각 하나씩 가져야하나 ?
+        self.embed_target = nn.Embedding(item_num, int(embed_size/2)) # (m:14586 * d:64), 예측 데이터(p)
+        
+        self.embed_region = nn.Embedding(region_embed_size, int(embed_size/2)) # 
+
+        self.relu = nn.ReLU()
+        self.sigmoid = nn.Sigmoid()
+        self.loss_func = nn.BCELoss() # binary cross entropy
+        self.softmax = nn.Softmax(dim=-1)
+
+        # Attention을 위한 MLP Layer 생성
+        self.attn_layer1 = nn.Linear(embed_size, hidden_size)
+        self.attn_layer2 = nn.Linear(hidden_size, 1, bias = False)
+
+        self.query = nn.Linear(int(embed_size/2),int(embed_size/2))
+        self.key = nn.Linear(int(embed_size/2),int(embed_size/2))
+        self.value = nn.Linear(int(embed_size/2),int(embed_size/2))
+        self.drop = nn.Dropout()
+        self._init_weight_()
+
+    def _init_weight_(self):
+        # weight 초기화, 표준편차 : 0.01
+        nn.init.normal_(self.embed_history.weight, std=0.01)
+        nn.init.normal_(self.embed_target.weight, std=0.01)
+        nn.init.normal_(self.embed_region.weight, std=0.01)
+        nn.init.normal_(self.embed_ingoing.weight, std=0.01)
+        nn.init.normal_(self.embed_outgoing.weight, std=0.01)
+        
+        # bias 초기화
+        for m in self.modules():
+            if isinstance(m, nn.Linear) and m.bias is not None:
+                m.bias.data.zero_()
+
+    def forward(self, history, target, near_pois, target_region):
+        #배치 사이즈만큼 잘라서 넣어줌
+        #print(len(history), len(target))
+        region_in, region_out = self.self_attention(self.embed_ingoing(torch.LongTensor(near_pois).cuda()),self.embed_outgoing(torch.LongTensor(near_pois).cuda()))
+        history_tensor = history
+        target_tensor = target
+        
+        # history_region_idx = history_region
+        # target_region_idx = target_region
+
+        prediction = self.attention_network(history_tensor,target_tensor, torch.cat((region_in[history],region_out[history]),dim=-1), torch.cat((region_out[target],region_in[target]),dim=-1))
+        return self.sigmoid(prediction)
+
+    def attention_network(self, user_history, target_item, history_region_embed, target_region_embed):
+        """
+        b: batch size (= input_item_num)
+        h: history size (h * 5 = item_num = batch_size)
+        d: embedding size
+        """
+        
+        history_ = self.embed_history(user_history) # (b * n * d)
+        history = torch.cat((history_, history_region_embed), -1)
+
+        target_ = self.embed_target(target_item) # (b * 1 * d)
+        target = torch.cat((target_, target_region_embed),-1)
+
+        batch_dim = len(target)
+        target = torch.reshape(target,(batch_dim, 1,-1))
+        input = history * target # (b * n * d)
+        result1 = self.relu(self.drop(self.attn_layer1(input))) # (n * d)
+        
+        result2 = self.attn_layer2(result1) # (n * 1) 
+        
+        exp_A = torch.exp(result2) # (b * n * 1)
+        exp_A = exp_A.squeeze(dim=-1)# (b * n )
+        mask = self.get_mask(user_history,target_item)
+        exp_A = exp_A * mask
+        exp_sum = torch.sum(exp_A,dim=-1) # (b * 1)
+        exp_sum = torch.pow(exp_sum, self.beta) # (b * 1)
+        
+        attn_weights = torch.divide(exp_A.T,exp_sum).T # (b * n)
+        attn_weights = attn_weights.reshape([batch_dim,-1, 1])# (b * n * 1)
+        result = history * attn_weights# (b * n * d)
+        target = target.reshape([batch_dim,-1,1]) # (b * d * 1)
+        
+        prediction = torch.bmm(result, target).squeeze(dim=-1) # (b * n * 1) -> (b * n)
+        prediction = torch.sum(prediction, dim = -1) # (b)
+        return prediction
+
+    def get_mask(self, user_history, target_item):
+        target_item = target_item.reshape([len(target_item),1])
+        mask = user_history != target_item
+        return mask
+    def loss_function(self, prediction, label):
+        return self.loss_func(prediction, label)
+    
+    def self_attention(self, ingoing, outgoing):
+        # q = self.query(torch.cat((ingoing,outgoing),dim=-1))
+        # k = self.key(torch.cat((outgoing,ingoing),dim=-1))
+        # v = self.value(torch.cat((ingoing,outgoing),dim=-1))
+
+        # q = torch.cat((ingoing[:,0,:],outgoing[:,0,:]),dim=-1).reshape(self.item_num,1,int(self.embed_size/2))
+        # k = torch.cat((outgoing,ingoing),dim=-1).reshape(self.item_num,int(self.embed_size/2),-1)
+        # v = torch.cat((ingoing,outgoing),dim=-1)
+        
+        # t3 = self.softmax(torch.bmm(q,k)/torch.sqrt(torch.tensor(self.embed_size/2)))
+        # t4 = torch.bmm(t3,v).squeeze()
+
+        q = ingoing[:,0,:].reshape(self.item_num,1,int(self.embed_size/4))
+        k_out = outgoing.reshape(self.item_num,int(self.embed_size/4),-1)
+        v_out = outgoing
+        
+        t3 = self.softmax(torch.bmm(q,k_out)/torch.sqrt(torch.tensor(self.embed_size/4)))
+        result_out = torch.bmm(t3,v_out).squeeze()
+
+        q = outgoing[:,0,:].reshape(self.item_num,1,int(self.embed_size/4))
+        k_in = ingoing.reshape(self.item_num,int(self.embed_size/4),-1)
+        v_in = ingoing
+        
+        t3 = self.softmax(torch.bmm(q,k_in)/torch.sqrt(torch.tensor(self.embed_size/4)))
+        result_in = torch.bmm(t3,v_in).squeeze()
+        return result_in,result_out
+    
+
     def topk_intersection(self):
         ingoing = self.embed_ingoing(torch.arange(0,self.item_num).cuda())
         outgoing = self.embed_outgoing(torch.arange(0,self.item_num).cuda())

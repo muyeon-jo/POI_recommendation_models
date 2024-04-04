@@ -337,9 +337,9 @@ class testDataset3(Dataset):
 class Args:
     def __init__(self):
         self.lr = 0.01# learning rate            
-        self.lamda = 0.0 # model regularization rate
-        self.batch_size = 64 # batch size for training
-        self.epochs = 200 # training epoches
+        self.lamda = 0.0000001 # model regularization rate
+        self.batch_size = 1 # batch size for training
+        self.epochs = 50 # training epoches
         self.topk = 50 # compute metrics@top_k
         self.factor_num = 128 # predictive factors numbers in the model
         self.hidden_dim = 128 # predictive factors numbers in the model
@@ -618,8 +618,9 @@ def train_NAIS_new3(train_matrix, test_positive, val_positive, dataset):
     if torch.cuda.is_available():
         model.cuda()
 
-    optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.lamda)
-    # optimizer = torch.optim.SGD(model.parameters(), lr=args.lr, weight_decay=args.lamda)
+    # optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.lamda)
+    # optimizer = torch.optim.Adagrad(model.parameters(), lr=args.lr, weight_decay=args.lamda)
+    optimizer = torch.optim.SGD(model.parameters(), lr=args.lr, weight_decay=args.lamda)
 
     for e in range(args.epochs):
         model.train()
@@ -630,20 +631,20 @@ def train_NAIS_new3(train_matrix, test_positive, val_positive, dataset):
         random.shuffle(idx)
         n = math.ceil(len(idx)/args.batch_size)
 
-        batch_user_index = []
-        for i in range(n):
-            if(i == n-1):
-                batch_user_index.append(idx[args.batch_size*i:])
-            else:
-                batch_user_index.append(idx[args.batch_size*i:args.batch_size*(i+1)])
+        # batch_user_index = []
+        # for i in range(n):
+        #     if(i == n-1):
+        #         batch_user_index.append(idx[args.batch_size*i:])
+        #     else:
+        #         batch_user_index.append(idx[args.batch_size*i:args.batch_size*(i+1)])
 
     
         # for user, item_i, item_j in train_loader:
-        for buid in batch_user_index:
-            user, item_i, item_j = get_BPR_batch(train_matrix,num_items,buid)
+        for buid in idx:
+            user, item_i, item_j = get_new3_batch(train_matrix,num_items,buid)
             optimizer.zero_grad() # 그래디언트 초기화
             prediction_i, prediction_j = model(user, item_i, item_j)
-            loss = model.loss_function(prediction_i,prediction_j) # BPR 손실 함수 계산
+            loss = model.bpr_loss(prediction_i,prediction_j) # BPR 손실 함수 계산
             train_loss += loss.item()
             loss.backward() # 역전파 및 그래디언트 계산
             optimizer.step() # 옵티마이저 업데이트
@@ -651,7 +652,7 @@ def train_NAIS_new3(train_matrix, test_positive, val_positive, dataset):
         end_time = int(time.time())
         print("Train Epoch: {}; time: {} sec; loss: {:.4f}".format(e+1, end_time-start_time,train_loss))
         
-        if (e+1)%10 == 0:
+        if (e+1)%1 == 0:
             model.eval() # 모델을 평가 모드로 설정
             with torch.no_grad():
                 start_time = int(time.time())
@@ -659,13 +660,13 @@ def train_NAIS_new3(train_matrix, test_positive, val_positive, dataset):
                 for user_id in range(num_users):
                     history = train_matrix.getrow(user_id).indices.tolist()
                     target_list = list(set(range(train_matrix.shape[1])) - set(history))
-                    user_tensor = torch.LongTensor([user_id] * (len(target_list))).to(DEVICE)
+                    user_tensor = torch.LongTensor(np.array([history]).repeat(len(target_list),axis=0)).to(DEVICE)
                     target_tensor = torch.LongTensor(target_list).to(DEVICE)
 
                     prediction, _ = model(user_tensor, target_tensor,target_tensor)
 
                     _, indices = torch.topk(prediction, args.topk)
-                    recommended_list.append([target_list[i] for i in indices])
+                    recommended_list.append([target_list[i] for i in indices.tolist()])
 
                 
                 precision_v, recall_v, hit_v = eval_metrics.evaluate_mp(val_positive,recommended_list,k_list)
@@ -711,6 +712,108 @@ def train_NAIS_new3(train_matrix, test_positive, val_positive, dataset):
                 end_time = int(time.time())
                 print("eval time: {} sec".format(end_time-start_time))
 
+def train_NAIS_new4(train_matrix, test_positive, val_positive, dataset):
+
+    now = datetime.now()
+    model_directory = "./model/"+now.strftime('%Y-%m-%d %H_%M_%S')+"new4"
+    result_directory = "./result/"+now.strftime('%Y-%m-%d %H_%M_%S')+"new4"
+    if not os.path.exists(model_directory):
+        os.makedirs(model_directory)
+    if not os.path.exists(result_directory):
+        os.makedirs(result_directory)
+    max_recall = 0.0
+    k_list=[5, 10, 15, 20, 25, 30]
+
+    args = Args()
+    with open(result_directory+"/setting.txt","w") as setting_f:
+        setting_f.write("lr:{}\n".format(str(args.lr)))
+        setting_f.write("lamda:{}\n".format(str(args.lamda)))
+        setting_f.write("epochs:{}\n".format(str(args.epochs)))
+        setting_f.write("factor_num:{}\n".format(str(args.factor_num)))
+        setting_f.write("hidden_dim:{}\n".format(str(args.hidden_dim)))
+        setting_f.write("num_ng:{}\n".format(str(args.num_ng)))
+        setting_f.write("dataset:{}\n".format(str(dataset.directory_path)))
+
+    num_users = dataset.user_num
+    num_items = dataset.poi_num
+    region_num = datasets.get_region_num(dataset.directory_path)
+    with open(dataset.directory_path+"poi_region_sorted.txt", 'r') as file:
+        # 모든 행을 읽어와서 첫 번째 열만 리스트로 변환
+        businessRegionEmbedList = [int(line.split('\t')[1].strip()) for line in file.readlines()]
+    businessRegionEmbedList = np.array(businessRegionEmbedList)
+    model = New4(num_items, args.factor_num,args.hidden_dim,0.5,region_num).to(DEVICE)
+
+    # 옵티마이저 생성 (adagrad 사용)
+    optimizer = torch.optim.Adagrad(model.parameters(), lr=args.lr, weight_decay=args.lamda)
+    # optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.lamda)
+    for e in range(args.epochs):
+        model.train()
+        train_loss = 0.0
+        start_time = int(time.time())
+
+        idx = list(range(num_users))
+        random.shuffle(idx)
+        for buid in idx:
+            optimizer.zero_grad() # 그래디언트 초기화
+            user_history , train_data, train_label, user_history_region, train_data_region = get_NAIS_batch_region(train_matrix, num_items, buid, args.num_ng, businessRegionEmbedList)
+            
+            prediction = model(user_history, train_data, dataset.nearPOI, train_data_region)
+            #if buid == 0:
+            #    print(f"prediction : {prediction.shape}, {prediction}")
+            loss = model.loss_func(prediction,train_label)
+            train_loss += loss.item()
+            loss.backward() # 역전파 및 그래디언트 계산
+            optimizer.step() # 옵티마이저 업데이트
+        end_time = int(time.time())
+        print("Train Epoch: {}; time: {} sec; loss: {:.4f}".format(e+1, end_time-start_time,train_loss))
+        if (e+1)%1 == 0:
+            model.eval() # 모델을 평가 모드로 설정
+            with torch.no_grad():
+                start_time = int(time.time())
+                precision_v, recall_v, hit_v, precision_t, recall_t, hit_t = val.new4_validation(model,args,num_users,test_positive,val_positive,train_matrix,businessRegionEmbedList,k_list,dataset.nearPOI)
+                
+                if(max_recall < recall_v[1]):
+                    max_recall = recall_v[1]
+                    torch.save(model, model_directory+"/model")
+                    f=open(result_directory+"/results.txt","w")
+                    f.write("epoch:{}\n".format(e))
+                    f.write("@k: " + str(k_list)+"\n")
+                    f.write("prec:" + str(precision_t)+"\n")
+                    f.write("recall:" + str(recall_t)+"\n")
+                    f.write("hit:" + str(hit_t)+"\n")
+                    f.close()
+                    ingoing,outgoing = model.topk_intersection()
+
+                    f1=open(result_directory+"/ingoing_intersection.txt","w")
+                    f1.write("ingoing\n")
+                    for li in ingoing.indices.tolist():
+                        f1.write(str(li)+"\n")
+                    f1.close()
+
+                    f1=open(result_directory+"/outgoing_intersection.txt","w")
+                    f1.write("outgoing\n")
+                    for li in outgoing.indices.tolist():
+                        f1.write(str(li)+"\n")
+                    f1.close()
+
+                    f1=open(result_directory+"/intersection.txt","w")
+                    f1.write("intersection\n")
+                    sum = 0
+                    res = []
+                    for li in range(len(outgoing.indices.tolist())):
+                        a = outgoing.indices[li].detach().cpu().numpy()
+                        b = ingoing.indices[li].detach().cpu().numpy()
+                        inter = np.intersect1d(a,b)
+                        sum+=len(inter)
+                        res.append(len(inter))
+                        f1.write(str(len(inter))+" "+str(inter)+"\n")
+                    f1.write("sum: "+str(sum)+"\n")
+                    f1.write("avr: "+str(sum/num_items)+"\n")
+                    f1.write("var: "+str(np.var(res))+"\n")
+                    f1.write("std: "+str(np.std(res))+"\n")
+                    f1.close()
+                end_time = int(time.time())
+                print("eval time: {} sec".format(end_time-start_time))
 if __name__ == '__main__':
     DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     seed=0
@@ -738,38 +841,38 @@ if __name__ == '__main__':
     
     print("train start")
     
-    train_NAIS_new3(train_matrix, test_positive, val_positive, dataset_)
+    train_NAIS_new4(train_matrix, test_positive, val_positive, dataset_)
 
     # torch.cuda.memory._dump_snapshot("my_snapshot.pickle")
 
-    # G = PowerLaw()
-    # print("data loading")
-    # dataset_ = datasets.Dataset(15359,14586,"./data/Yelp/")
-    # train_matrix, test_positive, val_positive, place_coords = dataset_.generate_data(0)
-    # pickle_save((train_matrix, test_positive, val_positive, place_coords,dataset_),"dataset_Yelp.pkl")
-    # train_matrix, test_positive, val_positive, place_coords, dataset_ = pickle_load("dataset_Yelp.pkl")
-    # print("train data generated")
-    # datasets.get_region(place_coords,300,dataset_.directory_path)
-    # datasets.get_region_num(dataset_.directory_path)
-    # print("geo file generated")
+    G = PowerLaw()
+    print("data loading")
+    dataset_ = datasets.Dataset(15359,14586,"./data/Yelp/")
+    train_matrix, test_positive, val_positive, place_coords = dataset_.generate_data(0)
+    pickle_save((train_matrix, test_positive, val_positive, place_coords,dataset_),"dataset_Yelp.pkl")
+    train_matrix, test_positive, val_positive, place_coords, dataset_ = pickle_load("dataset_Yelp.pkl")
+    print("train data generated")
+    datasets.get_region(place_coords,300,dataset_.directory_path)
+    datasets.get_region_num(dataset_.directory_path)
+    print("geo file generated")
     
-    # G.fit_distance_distribution(train_matrix, np.array(place_coords))
-    # print("train start")
+    G.fit_distance_distribution(train_matrix, np.array(place_coords))
+    print("train start")
     
-    # train_NAIS_new(train_matrix, test_positive, val_positive, dataset_)
+    train_NAIS_new4(train_matrix, test_positive, val_positive, dataset_)
 
-    # G = PowerLaw()
-    # print("data loading")
-    # dataset_ = datasets.Dataset(6638,21102,"./data/NewYork/")
-    # train_matrix, test_positive, val_positive, place_coords = dataset_.generate_data(0)
-    # pickle_save((train_matrix, test_positive, val_positive, place_coords,dataset_),"dataset_NewYork.pkl")
-    # train_matrix, test_positive, val_positive, place_coords, dataset_ = pickle_load("dataset_NewYork.pkl")
-    # print("train data generated")
-    # datasets.get_region(place_coords,300,dataset_.directory_path)
-    # datasets.get_region_num(dataset_.directory_path)
-    # print("geo file generated")
+    G = PowerLaw()
+    print("data loading")
+    dataset_ = datasets.Dataset(6638,21102,"./data/NewYork/")
+    train_matrix, test_positive, val_positive, place_coords = dataset_.generate_data(0)
+    pickle_save((train_matrix, test_positive, val_positive, place_coords,dataset_),"dataset_NewYork.pkl")
+    train_matrix, test_positive, val_positive, place_coords, dataset_ = pickle_load("dataset_NewYork.pkl")
+    print("train data generated")
+    datasets.get_region(place_coords,300,dataset_.directory_path)
+    datasets.get_region_num(dataset_.directory_path)
+    print("geo file generated")
     
-    # G.fit_distance_distribution(train_matrix, np.array(place_coords))
-    # print("train start")
+    G.fit_distance_distribution(train_matrix, np.array(place_coords))
+    print("train start")
     
-    # train_NAIS_new(train_matrix, test_positive, val_positive, dataset_)
+    train_NAIS_new4(train_matrix, test_positive, val_positive, dataset_)

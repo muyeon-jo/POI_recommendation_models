@@ -381,3 +381,48 @@ def get_New1_test(train_matrix, uid, businessRegionEmbedList):
     visit_rate=torch.tensor(visit_rate).to(DEVICE)
     
     return user_history, train_data, train_label, user_history_region, train_data_region, visit_rate
+
+def get_new3_batch(train_matrix, num_poi, uid):
+    DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    item_list = np.arange(num_poi).tolist()
+
+    positives = train_matrix.getrow(uid).indices.tolist()
+
+    random.shuffle(positives)
+    user_history = np.array([positives]).repeat(len(positives),axis=0)
+
+    negative = list(set(item_list)-set(positives))
+    random.shuffle(negative)
+
+    negative = negative[:len(positives)]
+    negatives = np.array(negative)
+
+    a= np.array(positives)
+    
+    user_history=torch.LongTensor(user_history).to(DEVICE)
+    a=torch.LongTensor(a).to(DEVICE)
+    negatives = torch.LongTensor(negatives).to(DEVICE)
+
+    return user_history, a, negatives
+
+def get_new3_test(train_matrix, num_poi, uid):
+    DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    item_list = np.arange(num_poi).tolist()
+
+    positives = train_matrix.getrow(uid).indices.tolist()
+
+    user_history = np.array([positives]).repeat(len(positives),axis=0)
+
+    negative = list(set(item_list)-set(positives))
+    random.shuffle(negative)
+
+    negative = negative[:len(positives)]
+    negatives = np.array(negative)
+
+    a= np.array(positives)
+    
+    user_history=torch.LongTensor(user_history).to(DEVICE)
+    a=torch.LongTensor(a).to(DEVICE)
+    negatives = torch.LongTensor(negatives).to(DEVICE)
+
+    return user_history, a, negatives
