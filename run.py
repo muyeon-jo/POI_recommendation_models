@@ -15,6 +15,7 @@ import validation as val
 import multiprocessing as mp
 import torch.cuda as T
 import pickle
+import save
 def pickle_load(name):
     with open(name, 'rb') as f:
         data = pickle.load(f)
@@ -95,17 +96,17 @@ def train_NAIS(train_matrix, test_positive, val_positive, dataset):
         idx = list(range(num_users))
         random.shuffle(idx)
 
-        for buid in idx:
+        # for buid in idx:
             
-            user_history, train_data, train_label = get_NAIS_batch(train_matrix,num_items,buid,args.num_ng)
-            optimizer.zero_grad() # 그래디언트 초기화
-            prediction = model(user_history, train_data)
-            loss = model.loss_func(prediction,train_label)
-            loss.backward() # 역전파 및 그래디언트 계산
+        #     user_history, train_data, train_label = get_NAIS_batch(train_matrix,num_items,buid,args.num_ng)
+        #     optimizer.zero_grad() # 그래디언트 초기화
+        #     prediction = model(user_history, train_data)
+        #     loss = model.loss_func(prediction,train_label)
+        #     loss.backward() # 역전파 및 그래디언트 계산
 
-            train_loss += loss.item()
+        #     train_loss += loss.item()
             
-            optimizer.step() # 옵티마이저 업데이트
+        #     optimizer.step() # 옵티마이저 업데이트
         end_time = int(time.time())
         print("Train Epoch: {}; time: {} sec; loss: {:.4f}".format(e+1, end_time-start_time,train_loss))
         if (e+1)%5 == 0:
@@ -117,22 +118,7 @@ def train_NAIS(train_matrix, test_positive, val_positive, dataset):
                 if(max_recall < recall_v[1]):
                     max_recall = recall_v[1]
                     torch.save(model, model_directory+"/model")
-                    f=open(result_directory+"/results.txt","w")
-                    f.write("epoch:{}\n".format(e))
-                    f.write("@k: " + str(k_list)+"\n")
-                    f.write("prec:")
-                    for i in range(len(precision_t)):
-                        f.write(str(precision_t[i])+"\t")
-                    f.write("\n")
-                    f.write("recall:")
-                    for i in range(len(recall_t)):
-                        f.write(str(recall_t[i])+"\t")
-                    f.write("\n")
-                    f.write("hit:")
-                    for i in range(len(hit_t)):
-                        f.write(str(hit_t[i])+"\t")
-                    f.write("\n")
-                    f.close()
+                    save.save_experiment_result(result_directory,[recall_t,precision_t,hit_t],k_list,e+1)
                 end_time = int(time.time())
                 print("eval time: {} sec".format(end_time-start_time))
 def train_NAIS_region(train_matrix, test_positive, val_positive, dataset,args):
@@ -176,20 +162,20 @@ def train_NAIS_region(train_matrix, test_positive, val_positive, dataset,args):
 
         idx = list(range(num_users))
         random.shuffle(idx)
-        for buid in idx:
-            optimizer.zero_grad() # 그래디언트 초기화
-            user_history , train_data, train_label, user_history_region, train_data_region = get_NAIS_batch_region(train_matrix, num_items, buid, args.num_ng, businessRegionEmbedList)
+        # for buid in idx:
+        #     optimizer.zero_grad() # 그래디언트 초기화
+        #     user_history , train_data, train_label, user_history_region, train_data_region = get_NAIS_batch_region(train_matrix, num_items, buid, args.num_ng, businessRegionEmbedList)
             
-            prediction = model(user_history, train_data, user_history_region, train_data_region)
-            #if buid == 0:
-            #    print(f"prediction : {prediction.shape}, {prediction}")
-            loss = model.loss_func(prediction,train_label)
-            train_loss += loss.item()
-            loss.backward() # 역전파 및 그래디언트 계산
-            optimizer.step() # 옵티마이저 업데이트
+        #     prediction = model(user_history, train_data, user_history_region, train_data_region)
+        #     #if buid == 0:
+        #     #    print(f"prediction : {prediction.shape}, {prediction}")
+        #     loss = model.loss_func(prediction,train_label)
+        #     train_loss += loss.item()
+        #     loss.backward() # 역전파 및 그래디언트 계산
+        #     optimizer.step() # 옵티마이저 업데이트
         end_time = int(time.time())
         print("Train Epoch: {}; time: {} sec; loss: {:.4f}".format(e+1, end_time-start_time,train_loss))
-        if (e+1)%1 == 0:
+        if (e+1)%5 == 0:
             model.eval() # 모델을 평가 모드로 설정
             with torch.no_grad():
                 start_time = int(time.time())
@@ -198,22 +184,7 @@ def train_NAIS_region(train_matrix, test_positive, val_positive, dataset,args):
                 if(max_recall < recall_v[1]):
                     max_recall = recall_v[1]
                     torch.save(model, model_directory+"/model")
-                    f=open(result_directory+"/results.txt","w")
-                    f.write("epoch:{}\n".format(e))
-                    f.write("@k: " + str(k_list)+"\n")
-                    f.write("prec:")
-                    for i in range(len(precision_t)):
-                        f.write(str(precision_t[i])+"\t")
-                    f.write("\n")
-                    f.write("recall:")
-                    for i in range(len(recall_t)):
-                        f.write(str(recall_t[i])+"\t")
-                    f.write("\n")
-                    f.write("hit:")
-                    for i in range(len(hit_t)):
-                        f.write(str(hit_t[i])+"\t")
-                    f.write("\n")
-                    f.close()
+                    save.save_experiment_result(result_directory,[recall_t,precision_t,hit_t],k_list,e+1)
                 end_time = int(time.time())
                 print("eval time: {} sec".format(end_time-start_time))
 def train_NAIS_region_distance(train_matrix, test_positive, val_positive, dataset,args):
@@ -859,9 +830,9 @@ def set_seed(random_seed):
 class Args:
     def __init__(self):
         self.lr = 0.01# learning rate
-        self.lamda = 0.0 # model regularization rate
+        self.lamda = 0.0000001 # model regularization rate
         self.batch_size = 4096 # batch size for training
-        self.epochs = 20 # training epoches
+        self.epochs = 50 # training epoches
         self.topk = 50 # compute metrics@top_k
         self.factor_num = 128 # predictive factors numbers in the model
         self.hidden_dim = 128 # predictive factors numbers in the model
@@ -880,15 +851,7 @@ if __name__ == '__main__':
     # dataset_ = datasets.Dataset(6638,21102,"./data/NewYork/")
     # train_matrix, test_positive, val_positive, place_coords = dataset_.generate_data(0)
     # pickle_save((train_matrix, test_positive, val_positive, place_coords,dataset_),"dataset_NewYork.pkl")
-    # train_matrix, test_positive, val_positive, place_coords, dataset_ = pickle_load("dataset_NewYork.pkl")
-    dataset_ = datasets.Dataset(15359,14586,"./data/Yelp/")
-    train_matrix, test_positive, val_positive, place_coords = dataset_.generate_data(0)
-    pickle_save((train_matrix, test_positive, val_positive, place_coords,dataset_),"dataset_Yelp.pkl")
-    train_matrix, test_positive, val_positive, place_coords, dataset_ = pickle_load("dataset_Yelp.pkl")
-    # dataset_ = datasets.Dataset(3725,10768,"./data/Tokyo/")
-    # train_matrix, test_positive, val_positive, place_coords = dataset_.generate_data(0)
-    # pickle_save((train_matrix, test_positive, val_positive, place_coords,dataset_),"dataset_Tokyo.pkl")
-    # train_matrix, test_positive, val_positive, place_coords, dataset_ = pickle_load("dataset_Tokyo.pkl")
+    train_matrix, test_positive, val_positive, place_coords, dataset_ = pickle_load("dataset_NewYork.pkl")
     print("train data generated")
     datasets.get_region(place_coords,300,dataset_.directory_path)
     datasets.get_region_num(dataset_.directory_path)
@@ -896,14 +859,60 @@ if __name__ == '__main__':
     
     G.fit_distance_distribution(train_matrix, np.array(place_coords))
     args=Args()
-    args.lamda = 0.001
     print("train start")
     # train_NAIS_distance(train_matrix, test_positive, test_negative, val_positive, val_negative, dataset_)
-    train_NAIS_region_distance(train_matrix, test_positive, val_positive, dataset_,args)
+    # train_NAIS_region_distance(train_matrix, test_positive, val_positive, dataset_,args)
     # train_NAIS_region_disentangled_distance(train_matrix, test_positive, test_negative, val_positive, val_negative, dataset_)
     
-    # train_NAIS_region(train_matrix, test_positive, val_positive, dataset_)
-    # train_NAIS(train_matrix, test_positive, val_positive, dataset_)
+    # train_NAIS_region(train_matrix, test_positive, val_positive, dataset_,args)
+    train_NAIS(train_matrix, test_positive, val_positive, dataset_)
+    # train_BPR(train_matrix, test_positive, val_positive, dataset_)
+    # train_GPR(train_matrix, test_positive, val_positive, dataset_)
+    # train_GeoIE(train_matrix, test_positive, val_positive, dataset_)
+
+    G = PowerLaw()
+    # dataset_ = datasets.Dataset(15359,14586,"./data/Yelp/")
+    # train_matrix, test_positive, val_positive, place_coords = dataset_.generate_data(0)
+    # pickle_save((train_matrix, test_positive, val_positive, place_coords,dataset_),"dataset_Yelp.pkl")
+    train_matrix, test_positive, val_positive, place_coords, dataset_ = pickle_load("dataset_Yelp.pkl")
+    print("train data generated")
+    datasets.get_region(place_coords,300,dataset_.directory_path)
+    datasets.get_region_num(dataset_.directory_path)
+    print("geo file generated")
+    
+    G.fit_distance_distribution(train_matrix, np.array(place_coords))
+    args=Args()
+    print("train start")
+    # train_NAIS_distance(train_matrix, test_positive, test_negative, val_positive, val_negative, dataset_)
+    # train_NAIS_region_distance(train_matrix, test_positive, val_positive, dataset_,args)
+    # train_NAIS_region_disentangled_distance(train_matrix, test_positive, test_negative, val_positive, val_negative, dataset_)
+    
+    train_NAIS_region(train_matrix, test_positive, val_positive, dataset_,args)
+    train_NAIS(train_matrix, test_positive, val_positive, dataset_)
+    # train_BPR(train_matrix, test_positive, val_positive, dataset_)
+    # train_GPR(train_matrix, test_positive, val_positive, dataset_)
+    # train_GeoIE(train_matrix, test_positive, val_positive, dataset_)
+
+
+    G = PowerLaw()
+    # dataset_ = datasets.Dataset(3725,10768,"./data/Tokyo/")
+    # train_matrix, test_positive, val_positive, place_coords = dataset_.generate_data(0)
+    # pickle_save((train_matrix, test_positive, val_positive, place_coords,dataset_),"dataset_Tokyo.pkl")
+    train_matrix, test_positive, val_positive, place_coords, dataset_ = pickle_load("dataset_Tokyo.pkl")
+    print("train data generated")
+    datasets.get_region(place_coords,300,dataset_.directory_path)
+    datasets.get_region_num(dataset_.directory_path)
+    print("geo file generated")
+    
+    G.fit_distance_distribution(train_matrix, np.array(place_coords))
+    args=Args()
+    print("train start")
+    # train_NAIS_distance(train_matrix, test_positive, test_negative, val_positive, val_negative, dataset_)
+    # train_NAIS_region_distance(train_matrix, test_positive, val_positive, dataset_,args)
+    # train_NAIS_region_disentangled_distance(train_matrix, test_positive, test_negative, val_positive, val_negative, dataset_)
+    
+    train_NAIS_region(train_matrix, test_positive, val_positive, dataset_,args)
+    train_NAIS(train_matrix, test_positive, val_positive, dataset_)
     # train_BPR(train_matrix, test_positive, val_positive, dataset_)
     # train_GPR(train_matrix, test_positive, val_positive, dataset_)
     # train_GeoIE(train_matrix, test_positive, val_positive, dataset_)

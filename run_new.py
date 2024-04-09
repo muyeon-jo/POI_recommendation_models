@@ -766,7 +766,7 @@ def train_NAIS_new4(train_matrix, test_positive, val_positive, dataset):
             optimizer.step() # 옵티마이저 업데이트
         end_time = int(time.time())
         print("Train Epoch: {}; time: {} sec; loss: {:.4f}".format(e+1, end_time-start_time,train_loss))
-        if (e+1)%1 == 0:
+        if (e+1)%5 == 0:
             model.eval() # 모델을 평가 모드로 설정
             with torch.no_grad():
                 start_time = int(time.time())
@@ -828,9 +828,9 @@ if __name__ == '__main__':
     # DEVICE = 'cpu'
     G = PowerLaw()
     print("data loading")
-    # dataset_ = datasets.Dataset(3725,10768,"./data/Tokyo/")
-    # train_matrix, test_positive, val_positive, place_coords = dataset_.generate_data(0)
-    # pickle_save((train_matrix, test_positive, val_positive, place_coords,dataset_),"dataset_Tokyo.pkl")
+    dataset_ = datasets.Dataset(3725,10768,"./data/Tokyo/")
+    train_matrix, test_positive, val_positive, place_coords = dataset_.generate_data(0)
+    pickle_save((train_matrix, test_positive, val_positive, place_coords,dataset_),"dataset_Tokyo.pkl")
     train_matrix, test_positive, val_positive, place_coords, dataset_ = pickle_load("dataset_Tokyo.pkl")
     print("train data generated")
     # datasets.get_region(place_coords,300,dataset_.directory_path)

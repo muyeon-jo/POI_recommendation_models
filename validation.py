@@ -7,13 +7,23 @@ import math
 def NAIS_validation(model, args,num_users, test_positive, val_positive, train_matrix,k_list):
     model.eval() # 모델을 평가 모드로 설정
     recommended_list = []
-    train_loss=0.0
+    batch_size = 1024
     for user_id in range(num_users):
         user_history, target_list, train_label = get_NAIS_batch_test(train_matrix,user_id)
-        prediction = model(user_history, target_list)
+        #한번에 모든 아이템에 계산하면 메모리 과하게 사용함->잘라서 나온 결과들 합침
+        n = math.ceil(len(user_history)/batch_size)
+
+        for i in range(n):
+            if i==0:
+                pred = model(user_history[batch_size*i:batch_size*(i+1)],target_list[batch_size*i:batch_size*(i+1)])
+            elif i == n-1:
+                pred = torch.cat((pred,model(user_history[batch_size*i:],target_list[batch_size*i:])),dim=-1)
+            else:
+                pred = torch.cat((pred,model(user_history[batch_size*i:batch_size*(i+1)],target_list[batch_size*i:batch_size*(i+1)])),dim=-1)
+        # prediction = model(user_history, target_list)
         # loss = model.loss_func(prediction,train_label)
         # train_loss += loss.item()
-        _, indices = torch.topk(prediction, args.topk)
+        _, indices = torch.topk(pred, args.topk)
         recommended_list.append([target_list[i].item() for i in indices])
     
     precision_v, recall_v, hit_v = eval_metrics.evaluate_mp(val_positive,recommended_list,k_list)
@@ -24,15 +34,24 @@ def NAIS_validation(model, args,num_users, test_positive, val_positive, train_ma
 def NAIS_region_validation(model, args,num_users, test_positive, val_positive, train_matrix, businessRegionEmbedList,k_list):
     model.eval() # 모델을 평가 모드로 설정
     recommended_list = []
-    train_loss=0.0
+    batch_size = 1024
     for user_id in range(num_users):
         user_history, target_list, train_label, user_history_region, train_data_region = get_NAIS_batch_test_region(train_matrix,user_id, businessRegionEmbedList)
+        #한번에 모든 아이템에 계산하면 메모리 과하게 사용함->잘라서 나온 결과들 합침
+        n = math.ceil(len(user_history)/batch_size)
 
-        prediction = model(user_history, target_list, user_history_region, train_data_region)
+        for i in range(n):
+            if i==0:
+                pred = model(user_history[batch_size*i:batch_size*(i+1)],target_list[batch_size*i:batch_size*(i+1)],user_history_region[batch_size*i:batch_size*(i+1)],train_data_region[batch_size*i:batch_size*(i+1)])
+            elif i == n-1:
+                pred = torch.cat((pred,model(user_history[batch_size*i:],target_list[batch_size*i:],user_history_region[batch_size*i:],train_data_region[batch_size*i:])),dim=-1)
+            else:
+                pred = torch.cat((pred,model(user_history[batch_size*i:batch_size*(i+1)],target_list[batch_size*i:batch_size*(i+1)],user_history_region[batch_size*i:batch_size*(i+1)],train_data_region[batch_size*i:batch_size*(i+1)])),dim=-1)
+        # prediction = model(user_history, target_list, user_history_region, train_data_region)
         # loss = model.loss_func(prediction,train_label)
         # train_loss += loss.item()
     
-        _, indices = torch.topk(prediction, args.topk)
+        _, indices = torch.topk(pred, args.topk)
         recommended_list.append([target_list[i].item() for i in indices])
 
     precision_v, recall_v, hit_v = eval_metrics.evaluate_mp(val_positive,recommended_list,k_list)
@@ -243,11 +262,11 @@ def new4_validation(model, args,num_users, test_positive, val_positive, train_ma
 
         for i in range(n):
             if(i == n-1):
-                pred = pred.cat(model(user_history[batch_size*i:],target_list[batch_size*i:],nearPOI,train_data_region),dim=-1)
+                pred = torch.cat((pred,model(user_history[batch_size*i:],target_list[batch_size*i:],nearPOI,train_data_region)),dim=-1)
             elif i == 0:
                 pred = model(user_history[batch_size*i:batch_size*(i+1)],target_list[batch_size*i:batch_size*(i+1)],nearPOI,train_data_region)
             else:
-                pred = pred.cat(model(user_history[batch_size*i:batch_size*(i+1)],target_list[batch_size*i:batch_size*(i+1)],nearPOI,train_data_region),dim=-1)
+                pred = torch.cat((pred,model(user_history[batch_size*i:batch_size*(i+1)],target_list[batch_size*i:batch_size*(i+1)],nearPOI,train_data_region)),dim=-1)
         #---
         # prediction = model(user_history, target_list, nearPOI, train_data_region)
         # loss = model.loss_func(prediction,train_label)
@@ -255,7 +274,7 @@ def new4_validation(model, args,num_users, test_positive, val_positive, train_ma
     
         _, indices = torch.topk(pred, args.topk)
         recommended_list.append([target_list[i].item() for i in indices])
-        torch.cuda.empty_cache() # GPU 캐시 데이터 삭제
+        # torch.cuda.empty_cache() # GPU 캐시 데이터 삭제
     precision_v, recall_v, hit_v = eval_metrics.evaluate_mp(val_positive,recommended_list,k_list)
     precision_t, recall_t, hit_t = eval_metrics.evaluate_mp(test_positive,recommended_list,k_list)
     return precision_v, recall_v, hit_v, precision_t, recall_t, hit_t

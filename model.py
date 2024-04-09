@@ -19,6 +19,7 @@ class NAIS_basic(nn.Module):
         self.relu = nn.ReLU()
         self.sigmoid = nn.Sigmoid()
         self.loss_func = nn.BCELoss() # binary cross entropy
+        self.drop = nn.Dropout()
 
         # Attention을 위한 MLP Layer 생성
         self.attn_layer1 = nn.Linear(self.embed_size, self.hidden_size)
@@ -67,7 +68,7 @@ class NAIS_basic(nn.Module):
         batch_dim = len(target)
         target = torch.reshape(target,(batch_dim, 1,-1))
         input = history * target # (b * n * d)
-        result1 = self.relu(self.attn_layer1(input)) # (n * d)
+        result1 = self.relu(self.drop(self.attn_layer1(input))) # (n * d)
         
         result2 = self.attn_layer2(result1) # (n * 1) 
         
@@ -114,7 +115,7 @@ class NAIS_regionEmbedding(nn.Module):
         # Attention을 위한 MLP Layer 생성
         self.attn_layer1 = nn.Linear(embed_size, hidden_size)
         self.attn_layer2 = nn.Linear(hidden_size, 1, bias = False)
-
+        self.drop = nn.Dropout()
         self._init_weight_()
 
     def _init_weight_(self):
@@ -158,7 +159,7 @@ class NAIS_regionEmbedding(nn.Module):
         batch_dim = len(target)
         target = torch.reshape(target,(batch_dim, 1,-1))
         input = history * target # (b * n * d)
-        result1 = self.relu(self.attn_layer1(input)) # (n * d)
+        result1 = self.relu(self.drop(self.attn_layer1(input))) # (n * d)
         
         result2 = self.attn_layer2(result1) # (n * 1) 
         
