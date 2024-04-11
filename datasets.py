@@ -3,7 +3,7 @@ import scipy.sparse as sparse
 import numpy as np
 import random
 import csv
-from haversine import haversine
+from haversine import haversine, haversine_vector
 def get_region(place_coords,size,path):
     """
     place_coords: list, index:poi_id value:(poi_lat, poi_lng)
@@ -402,7 +402,7 @@ class Dataset(object):
 
         return train_matrix.tocsr(), test_positive, val_positive
 
-    def read_poi_coos(self):
+    def read_poi_coos(self,near_POI_num):
         poi_coos = {}
         poi_data = open(self.directory_path + self.poi_file, 'r').readlines()
         for eachline in poi_data:
@@ -414,22 +414,29 @@ class Dataset(object):
         for k, v in poi_coos.items():
             place_coords.append([v[0], v[1]])
         self.place_coos = place_coords
-        self.dist_matrix = np.zeros((self.poi_num,self.poi_num))
-        for i in range(self.poi_num):
-            for j in range(self.poi_num):
-                self.dist_matrix[i][j] = haversine(place_coords[i],place_coords[j])
-        self.nearPOI = np.argpartition(self.dist_matrix,50)[:,:50]
+        self.dist_matrix = np.array(haversine_vector(place_coords,place_coords,comb=True))
+        # self.dist_matrix = np.zeros((self.poi_num,self.poi_num))
+        # for i in range(self.poi_num):
+        #     for j in range(self.poi_num):
+        #         self.dist_matrix[i][j] = haversine(place_coords[i],place_coords[j])
+        self.nearPOI = np.argpartition(self.dist_matrix,near_POI_num)[:,:near_POI_num]
+        
         return place_coords
 
-    def generate_data(self, random_seed=0):
+    def generate_data(self, random_seed=0, near_POI_num = 50):
         raw_matrix, time_matrix = self.read_raw_data()
         train_matrix, test_positive, val_positive = self.split_data(raw_matrix, time_matrix, random_seed)
-        place_coords =self.read_poi_coos()
+        place_coords =self.read_poi_coos(near_POI_num)
         return train_matrix,  test_positive, val_positive, place_coords
 
 if __name__ == '__main__':
     # train_matrix, test_positive, test_negative, val_positive, val_negative, place_coords= Dataset(9902,6427,"./data/philadelphia_downtown/").generate_data()
-    train_matrix, test_positive, val_positive, place_coords= Dataset(3725,10768,"./data/Tokyo/").generate_data()
+    dataset = Dataset(3725,10768,"./data/Tokyo/")
+    train_matrix, test_positive, val_positive, place_coords= dataset.generate_data()
+    nearPOI_user_matrix = []
+    a = train_matrix.toarray()
+    for i in range(len(dataset.nearPOI)):
+        nearPOI_user_matrix.append(a[:dataset.nearPOI[i]])
     print(train_matrix.shape, len(test_positive), len(place_coords))
 
 
