@@ -96,17 +96,17 @@ def train_NAIS(train_matrix, test_positive, val_positive, dataset):
         idx = list(range(num_users))
         random.shuffle(idx)
 
-        # for buid in idx:
+        for buid in idx:
             
-        #     user_history, train_data, train_label = get_NAIS_batch(train_matrix,num_items,buid,args.num_ng)
-        #     optimizer.zero_grad() # 그래디언트 초기화
-        #     prediction = model(user_history, train_data)
-        #     loss = model.loss_func(prediction,train_label)
-        #     loss.backward() # 역전파 및 그래디언트 계산
+            user_history, train_data, train_label = get_NAIS_batch(train_matrix,num_items,buid,args.num_ng)
+            optimizer.zero_grad() # 그래디언트 초기화
+            prediction = model(user_history, train_data)
+            loss = model.loss_func(prediction,train_label)
+            loss.backward() # 역전파 및 그래디언트 계산
 
-        #     train_loss += loss.item()
+            train_loss += loss.item()
             
-        #     optimizer.step() # 옵티마이저 업데이트
+            optimizer.step() # 옵티마이저 업데이트
         end_time = int(time.time())
         print("Train Epoch: {}; time: {} sec; loss: {:.4f}".format(e+1, end_time-start_time,train_loss))
         if (e+1)%5 == 0:
@@ -162,17 +162,17 @@ def train_NAIS_region(train_matrix, test_positive, val_positive, dataset,args):
 
         idx = list(range(num_users))
         random.shuffle(idx)
-        # for buid in idx:
-        #     optimizer.zero_grad() # 그래디언트 초기화
-        #     user_history , train_data, train_label, user_history_region, train_data_region = get_NAIS_batch_region(train_matrix, num_items, buid, args.num_ng, businessRegionEmbedList)
+        for buid in idx:
+            optimizer.zero_grad() # 그래디언트 초기화
+            user_history , train_data, train_label, user_history_region, train_data_region = get_NAIS_batch_region(train_matrix, num_items, buid, args.num_ng, businessRegionEmbedList)
             
-        #     prediction = model(user_history, train_data, user_history_region, train_data_region)
-        #     #if buid == 0:
-        #     #    print(f"prediction : {prediction.shape}, {prediction}")
-        #     loss = model.loss_func(prediction,train_label)
-        #     train_loss += loss.item()
-        #     loss.backward() # 역전파 및 그래디언트 계산
-        #     optimizer.step() # 옵티마이저 업데이트
+            prediction = model(user_history, train_data, user_history_region, train_data_region)
+            #if buid == 0:
+            #    print(f"prediction : {prediction.shape}, {prediction}")
+            loss = model.loss_func(prediction,train_label)
+            train_loss += loss.item()
+            loss.backward() # 역전파 및 그래디언트 계산
+            optimizer.step() # 옵티마이저 업데이트
         end_time = int(time.time())
         print("Train Epoch: {}; time: {} sec; loss: {:.4f}".format(e+1, end_time-start_time,train_loss))
         if (e+1)%5 == 0:
@@ -830,7 +830,7 @@ def set_seed(random_seed):
 class Args:
     def __init__(self):
         self.lr = 0.01# learning rate
-        self.lamda = 0.0000001 # model regularization rate
+        self.lamda = 0.0 # model regularization rate
         self.batch_size = 4096 # batch size for training
         self.epochs = 50 # training epoches
         self.topk = 50 # compute metrics@top_k

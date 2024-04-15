@@ -415,11 +415,7 @@ class Dataset(object):
             place_coords.append([v[0], v[1]])
         self.place_coos = place_coords
         self.dist_matrix = np.array(haversine_vector(place_coords,place_coords,comb=True))
-        # self.dist_matrix = np.zeros((self.poi_num,self.poi_num))
-        # for i in range(self.poi_num):
-        #     for j in range(self.poi_num):
-        #         self.dist_matrix[i][j] = haversine(place_coords[i],place_coords[j])
-        self.nearPOI = np.argpartition(self.dist_matrix,near_POI_num)[:,:near_POI_num]
+        # self.nearPOI = np.argpartition(self.dist_matrix,near_POI_num)[:,:near_POI_num]
         
         return place_coords
 
@@ -427,16 +423,53 @@ class Dataset(object):
         raw_matrix, time_matrix = self.read_raw_data()
         train_matrix, test_positive, val_positive = self.split_data(raw_matrix, time_matrix, random_seed)
         place_coords =self.read_poi_coos(near_POI_num)
-        return train_matrix,  test_positive, val_positive, place_coords
+        a = train_matrix.toarray()
+        self.near_list = []
+        for i in range(len(a[0])):
+            t = np.where(self.dist_matrix[i]<1.0)
+            na=a[:,t].reshape(len(a),-1)
+            norms = np.linalg.norm(na,axis=0).reshape(1,-1).repeat(len(t),axis=0)
+            sim = np.dot(na.T,na)/(norms*norms.T+0.000000001)
+            self.near_list.append(np.argpartition(sim,-50)[:,len(self.dist_matrix)-50:])
 
+
+        ext = 1/(np.exp(self.dist_matrix)*10)
+        
+        na = np.repeat(np.linalg.norm(a,axis=0).reshape(1,-1),len(self.dist_matrix),axis=0)
+        sim = np.dot(a.T,a)/((na*na.T)+0.0000000001)+ext
+        self.nearPOI = np.argpartition(sim,-50)[:,len(self.dist_matrix)-50:]
+        return train_matrix, test_positive, val_positive, place_coords
+def cosine_sim(A,B):
+    return np.dot(A,B)/((np.linalg.norm(A)*np.linalg.norm(B))+0.0000000001)
 if __name__ == '__main__':
     # train_matrix, test_positive, test_negative, val_positive, val_negative, place_coords= Dataset(9902,6427,"./data/philadelphia_downtown/").generate_data()
     dataset = Dataset(3725,10768,"./data/Tokyo/")
     train_matrix, test_positive, val_positive, place_coords= dataset.generate_data()
     nearPOI_user_matrix = []
+    nearPOI = []
     a = train_matrix.toarray()
+    ext = 1/(np.exp(dataset.dist_matrix)*10)
+    
+    na = np.repeat(np.linalg.norm(a,axis=0).reshape(1,-1),len(dataset.dist_matrix),axis=0)
+    nt = na.T
+    sim = np.dot(a.T,a)/((na*na.T)+0.0000000001)+ext
+    poi = np.argpartition(sim,-50)[:,len(dataset.dist_matrix)-50:]
+    for i in range(len(dataset.dist_matrix)):
+        indices = np.arange(len(dataset.dist_matrix))
+        # indices = np.where(dataset.dist_matrix[i] < 10.0)[0]
+        # ext = 1/np.exp(dataset.dist_matrix[i][indices])
+        t = a[:,indices]
+        t = t.T
+        origin = a[:,i]
+        origin = np.repeat(origin.reshape([1,-1]),len(indices),axis=0)
+        sim = np.zeros(len(origin))
+        for j in range(len(origin)):
+            sim[j] = cosine_sim(origin[j],t[j])+ext[j]
+        nearPOI.append(np.argpartition(sim,-50)[len(origin)-50:])
+
     for i in range(len(dataset.nearPOI)):
-        nearPOI_user_matrix.append(a[:dataset.nearPOI[i]])
+        nearPOI_user_matrix.append(a[:,dataset.nearPOI[i]])
     print(train_matrix.shape, len(test_positive), len(place_coords))
 
+    
 

@@ -17,6 +17,7 @@ import multiprocessing as mp
 import torch.cuda
 import torch
 import pickle
+import save
 from torchmetrics.functional.pairwise import pairwise_manhattan_distance
 from haversine import haversine, haversine_vector
 
@@ -775,13 +776,7 @@ def train_NAIS_new4(train_matrix, test_positive, val_positive, dataset):
                 if(max_recall < recall_v[1]):
                     max_recall = recall_v[1]
                     torch.save(model, model_directory+"/model")
-                    f=open(result_directory+"/results.txt","w")
-                    f.write("epoch:{}\n".format(e))
-                    f.write("@k: " + str(k_list)+"\n")
-                    f.write("prec:" + str(precision_t)+"\n")
-                    f.write("recall:" + str(recall_t)+"\n")
-                    f.write("hit:" + str(hit_t)+"\n")
-                    f.close()
+                    save.save_experiment_result(result_directory,[recall_t,precision_t,hit_t],k_list,e+1)
                     ingoing,outgoing = model.topk_intersection()
 
                     f1=open(result_directory+"/ingoing_intersection.txt","w")
