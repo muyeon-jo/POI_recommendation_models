@@ -415,7 +415,7 @@ class Dataset(object):
             place_coords.append([v[0], v[1]])
         self.place_coos = place_coords
         self.dist_matrix = np.array(haversine_vector(place_coords,place_coords,comb=True))
-        # self.nearPOI = np.argpartition(self.dist_matrix,near_POI_num)[:,:near_POI_num]
+        self.nearPOI = np.argpartition(self.dist_matrix,near_POI_num)[:,:near_POI_num]
         
         return place_coords
 
@@ -423,21 +423,22 @@ class Dataset(object):
         raw_matrix, time_matrix = self.read_raw_data()
         train_matrix, test_positive, val_positive = self.split_data(raw_matrix, time_matrix, random_seed)
         place_coords =self.read_poi_coos(near_POI_num)
-        a = train_matrix.toarray()
-        self.near_list = []
-        for i in range(len(a[0])):
-            t = np.where(self.dist_matrix[i]<1.0)
-            na=a[:,t].reshape(len(a),-1)
-            norms = np.linalg.norm(na,axis=0).reshape(1,-1).repeat(len(t),axis=0)
-            sim = np.dot(na.T,na)/(norms*norms.T+0.000000001)
-            self.near_list.append(np.argpartition(sim,-50)[:,len(self.dist_matrix)-50:])
+        # a = train_matrix.toarray()
+        # self.near_list = []
+        # for i in range(len(a[0])):
+        #     t = np.where(self.dist_matrix[i]<1.0)
+        #     na=a[:,t].reshape(len(a),-1)
+        #     norms = np.linalg.norm(na,axis=0).reshape(1,-1).repeat(len(t),axis=0)
+        #     sim = np.dot(na.T,na)/(norms*norms.T+0.000000001)
+        #     self.near_list.append(np.argpartition(sim,-50)[:,len(self.dist_matrix)-50:])
 
 
-        ext = 1/(np.exp(self.dist_matrix)*10)
+        # ext = 1/(np.exp(self.dist_matrix)*10)
         
-        na = np.repeat(np.linalg.norm(a,axis=0).reshape(1,-1),len(self.dist_matrix),axis=0)
-        sim = np.dot(a.T,a)/((na*na.T)+0.0000000001)+ext
-        self.nearPOI = np.argpartition(sim,-50)[:,len(self.dist_matrix)-50:]
+        # na = np.repeat(np.linalg.norm(a,axis=0).reshape(1,-1),len(self.dist_matrix),axis=0)
+        # sim = np.dot(a.T,a)/((na*na.T)+0.0000000001)+ext
+        # self.nearPOI = np.argpartition(sim,-50)[:,len(self.dist_matrix)-50:]
+        # self.nearPOI = np.argpartition(self.dist_matrix,50)[:,:50]
         return train_matrix, test_positive, val_positive, place_coords
 def cosine_sim(A,B):
     return np.dot(A,B)/((np.linalg.norm(A)*np.linalg.norm(B))+0.0000000001)
