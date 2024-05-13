@@ -337,8 +337,8 @@ class testDataset3(Dataset):
 
 class Args:
     def __init__(self):
-        self.lr = 0.0001# learning rate            
-        self.lamda = 0.000001 # model regularization rate
+        self.lr = 0.01# learning rate            
+        self.lamda = 1e-7 # model regularization rate
         self.batch_size = 1 # batch size for training
         self.epochs = 50 # training epoches
         self.topk = 50 # compute metrics@top_k
@@ -841,8 +841,8 @@ def train_all_in_out(train_matrix, test_positive, val_positive, dataset):
     model = all_in_out(num_items, args.factor_num,args.hidden_dim,0.5,region_num).to(DEVICE)
 
     # 옵티마이저 생성 (adagrad 사용)
-    # optimizer = torch.optim.Adagrad(model.parameters(), lr=args.lr, weight_decay=args.lamda)
-    optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.lamda)
+    optimizer = torch.optim.Adagrad(model.parameters(), lr=args.lr, weight_decay=args.lamda)
+    # optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.lamda)
     for e in range(args.epochs):
         model.train()
         train_loss = 0.0
@@ -906,11 +906,11 @@ def train_all_in_out(train_matrix, test_positive, val_positive, dataset):
                 end_time = int(time.time())
                 print("eval time: {} sec".format(end_time-start_time))
 
-def train_nearPOI_embedding(train_matrix, test_positive, val_positive, dataset):
+def train_no_POI_emb(train_matrix, test_positive, val_positive, dataset):
 
     now = datetime.now()
-    model_directory = "./model/"+now.strftime('%Y-%m-%d %H_%M_%S')+"nearPOI_embedding"
-    result_directory = "./result/"+now.strftime('%Y-%m-%d %H_%M_%S')+"nearPOI_embedding"
+    model_directory = "./model/"+now.strftime('%Y-%m-%d %H_%M_%S')+"no_POI_emb"
+    result_directory = "./result/"+now.strftime('%Y-%m-%d %H_%M_%S')+"no_POI_emb"
     if not os.path.exists(model_directory):
         os.makedirs(model_directory)
     if not os.path.exists(result_directory):
@@ -935,7 +935,201 @@ def train_nearPOI_embedding(train_matrix, test_positive, val_positive, dataset):
         # 모든 행을 읽어와서 첫 번째 열만 리스트로 변환
         businessRegionEmbedList = [int(line.split('\t')[1].strip()) for line in file.readlines()]
     businessRegionEmbedList = np.array(businessRegionEmbedList)
-    model = nearPOI_embedding(num_items, args.factor_num,args.hidden_dim,0.5,region_num).to(DEVICE)
+    model = no_POI_emb(num_items, args.factor_num,args.hidden_dim,0.5,region_num).to(DEVICE)
+
+    # 옵티마이저 생성 (adagrad 사용)
+    optimizer = torch.optim.Adagrad(model.parameters(), lr=args.lr, weight_decay=args.lamda)
+    # optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.lamda)
+    for e in range(args.epochs):
+        model.train()
+        train_loss = 0.0
+        start_time = int(time.time())
+
+        idx = list(range(num_users))
+        random.shuffle(idx)
+        for buid in idx:
+            optimizer.zero_grad() # 그래디언트 초기화
+            user_history , train_data, train_label, user_history_region, train_data_region = get_NAIS_batch_region(train_matrix, num_items, buid, args.num_ng, businessRegionEmbedList)
+            
+            prediction = model(user_history, train_data, dataset.nearPOI, train_data_region)
+            #if buid == 0:
+            #    print(f"prediction : {prediction.shape}, {prediction}")
+            loss = model.loss_func(prediction,train_label)
+            train_loss += loss.item()
+            loss.backward() # 역전파 및 그래디언트 계산
+            optimizer.step() # 옵티마이저 업데이트
+        end_time = int(time.time())
+        print("Train Epoch: {}; time: {} sec; loss: {:.4f}".format(e+1, end_time-start_time,train_loss))
+        if (e+1)%5 == 0:
+            model.eval() # 모델을 평가 모드로 설정
+            with torch.no_grad():
+                start_time = int(time.time())
+                precision_v, recall_v, hit_v, precision_t, recall_t, hit_t = val.new4_validation(model,args,num_users,test_positive,val_positive,train_matrix,businessRegionEmbedList,k_list,dataset.nearPOI)
+                
+                if(max_recall < recall_v[1]):
+                    max_recall = recall_v[1]
+                    torch.save(model, model_directory+"/model")
+                    save.save_experiment_result(result_directory,[recall_t,precision_t,hit_t],k_list,e+1)
+                    # ingoing,outgoing = model.topk_intersection()
+
+                    # f1=open(result_directory+"/ingoing_intersection.txt","w")
+                    # f1.write("ingoing\n")
+                    # for li in ingoing.indices.tolist():
+                    #     f1.write(str(li)+"\n")
+                    # f1.close()
+
+                    # f1=open(result_directory+"/outgoing_intersection.txt","w")
+                    # f1.write("outgoing\n")
+                    # for li in outgoing.indices.tolist():
+                    #     f1.write(str(li)+"\n")
+                    # f1.close()
+
+                    # f1=open(result_directory+"/intersection.txt","w")
+                    # f1.write("intersection\n")
+                    # sum = 0
+                    # res = []
+                    # for li in range(len(outgoing.indices.tolist())):
+                    #     a = outgoing.indices[li].detach().cpu().numpy()
+                    #     b = ingoing.indices[li].detach().cpu().numpy()
+                    #     inter = np.intersect1d(a,b)
+                    #     sum+=len(inter)
+                    #     res.append(len(inter))
+                    #     f1.write(str(len(inter))+" "+str(inter)+"\n")
+                    # f1.write("sum: "+str(sum)+"\n")
+                    # f1.write("avr: "+str(sum/num_items)+"\n")
+                    # f1.write("var: "+str(np.var(res))+"\n")
+                    # f1.write("std: "+str(np.std(res))+"\n")
+                    # f1.close()
+                end_time = int(time.time())
+                print("eval time: {} sec".format(end_time-start_time))
+
+def train_transform_in_out(train_matrix, test_positive, val_positive, dataset):
+
+    now = datetime.now()
+    model_directory = "./model/"+now.strftime('%Y-%m-%d %H_%M_%S')+"train_transform_in_out"
+    result_directory = "./result/"+now.strftime('%Y-%m-%d %H_%M_%S')+"train_transform_in_out"
+    if not os.path.exists(model_directory):
+        os.makedirs(model_directory)
+    if not os.path.exists(result_directory):
+        os.makedirs(result_directory)
+    max_recall = 0.0
+    k_list=[5, 10, 15, 20, 25, 30]
+
+    args = Args()
+    with open(result_directory+"/setting.txt","w") as setting_f:
+        setting_f.write("lr:{}\n".format(str(args.lr)))
+        setting_f.write("lamda:{}\n".format(str(args.lamda)))
+        setting_f.write("epochs:{}\n".format(str(args.epochs)))
+        setting_f.write("factor_num:{}\n".format(str(args.factor_num)))
+        setting_f.write("hidden_dim:{}\n".format(str(args.hidden_dim)))
+        setting_f.write("num_ng:{}\n".format(str(args.num_ng)))
+        setting_f.write("dataset:{}\n".format(str(dataset.directory_path)))
+
+    num_users = dataset.user_num
+    num_items = dataset.poi_num
+    region_num = datasets.get_region_num(dataset.directory_path)
+    with open(dataset.directory_path+"poi_region_sorted.txt", 'r') as file:
+        # 모든 행을 읽어와서 첫 번째 열만 리스트로 변환
+        businessRegionEmbedList = [int(line.split('\t')[1].strip()) for line in file.readlines()]
+    businessRegionEmbedList = np.array(businessRegionEmbedList)
+    model = transform_ingoing_outgoing(num_items, args.factor_num,args.hidden_dim,0.5,region_num).to(DEVICE)
+
+    # 옵티마이저 생성 (adagrad 사용)
+    optimizer = torch.optim.Adagrad(model.parameters(), lr=args.lr, weight_decay=args.lamda)
+    # optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.lamda)
+    for e in range(args.epochs):
+        model.train()
+        train_loss = 0.0
+        start_time = int(time.time())
+
+        idx = list(range(num_users))
+        random.shuffle(idx)
+        for buid in idx:
+            optimizer.zero_grad() # 그래디언트 초기화
+            user_history , train_data, train_label, user_history_region, train_data_region = get_NAIS_batch_region(train_matrix, num_items, buid, args.num_ng, businessRegionEmbedList)
+            
+            prediction = model(user_history, train_data, dataset.nearPOI, train_data_region)
+            #if buid == 0:
+            #    print(f"prediction : {prediction.shape}, {prediction}")
+            loss = model.loss_func(prediction,train_label)
+            train_loss += loss.item()
+            loss.backward() # 역전파 및 그래디언트 계산
+            optimizer.step() # 옵티마이저 업데이트
+        end_time = int(time.time())
+        print("Train Epoch: {}; time: {} sec; loss: {:.4f}".format(e+1, end_time-start_time,train_loss))
+        if (e+1)%5 == 0:
+            model.eval() # 모델을 평가 모드로 설정
+            with torch.no_grad():
+                start_time = int(time.time())
+                precision_v, recall_v, hit_v, precision_t, recall_t, hit_t = val.new4_validation(model,args,num_users,test_positive,val_positive,train_matrix,businessRegionEmbedList,k_list,dataset.nearPOI)
+                
+                if(max_recall < recall_v[1]):
+                    max_recall = recall_v[1]
+                    torch.save(model, model_directory+"/model")
+                    save.save_experiment_result(result_directory,[recall_t,precision_t,hit_t],k_list,e+1)
+                    # ingoing,outgoing = model.topk_intersection()
+
+                    # f1=open(result_directory+"/ingoing_intersection.txt","w")
+                    # f1.write("ingoing\n")
+                    # for li in ingoing.indices.tolist():
+                    #     f1.write(str(li)+"\n")
+                    # f1.close()
+
+                    # f1=open(result_directory+"/outgoing_intersection.txt","w")
+                    # f1.write("outgoing\n")
+                    # for li in outgoing.indices.tolist():
+                    #     f1.write(str(li)+"\n")
+                    # f1.close()
+
+                    # f1=open(result_directory+"/intersection.txt","w")
+                    # f1.write("intersection\n")
+                    # sum = 0
+                    # res = []
+                    # for li in range(len(outgoing.indices.tolist())):
+                    #     a = outgoing.indices[li].detach().cpu().numpy()
+                    #     b = ingoing.indices[li].detach().cpu().numpy()
+                    #     inter = np.intersect1d(a,b)
+                    #     sum+=len(inter)
+                    #     res.append(len(inter))
+                    #     f1.write(str(len(inter))+" "+str(inter)+"\n")
+                    # f1.write("sum: "+str(sum)+"\n")
+                    # f1.write("avr: "+str(sum/num_items)+"\n")
+                    # f1.write("var: "+str(np.var(res))+"\n")
+                    # f1.write("std: "+str(np.std(res))+"\n")
+                    # f1.close()
+                end_time = int(time.time())
+                print("eval time: {} sec".format(end_time-start_time))
+
+def train_transform_attn(train_matrix, test_positive, val_positive, dataset):
+
+    now = datetime.now()
+    model_directory = "./model/"+now.strftime('%Y-%m-%d %H_%M_%S')+"transform_attn"
+    result_directory = "./result/"+now.strftime('%Y-%m-%d %H_%M_%S')+"transform_attn"
+    if not os.path.exists(model_directory):
+        os.makedirs(model_directory)
+    if not os.path.exists(result_directory):
+        os.makedirs(result_directory)
+    max_recall = 0.0
+    k_list=[5, 10, 15, 20, 25, 30]
+
+    args = Args()
+    with open(result_directory+"/setting.txt","w") as setting_f:
+        setting_f.write("lr:{}\n".format(str(args.lr)))
+        setting_f.write("lamda:{}\n".format(str(args.lamda)))
+        setting_f.write("epochs:{}\n".format(str(args.epochs)))
+        setting_f.write("factor_num:{}\n".format(str(args.factor_num)))
+        setting_f.write("hidden_dim:{}\n".format(str(args.hidden_dim)))
+        setting_f.write("num_ng:{}\n".format(str(args.num_ng)))
+        setting_f.write("dataset:{}\n".format(str(dataset.directory_path)))
+
+    num_users = dataset.user_num
+    num_items = dataset.poi_num
+    region_num = datasets.get_region_num(dataset.directory_path)
+    with open(dataset.directory_path+"poi_region_sorted.txt", 'r') as file:
+        # 모든 행을 읽어와서 첫 번째 열만 리스트로 변환
+        businessRegionEmbedList = [int(line.split('\t')[1].strip()) for line in file.readlines()]
+    businessRegionEmbedList = np.array(businessRegionEmbedList)
+    model = transform_attn(num_items, args.factor_num,args.hidden_dim,0.5,region_num).to(DEVICE)
 
     # 옵티마이저 생성 (adagrad 사용)
     # optimizer = torch.optim.Adagrad(model.parameters(), lr=args.lr, weight_decay=args.lamda)
@@ -970,38 +1164,136 @@ def train_nearPOI_embedding(train_matrix, test_positive, val_positive, dataset):
                     max_recall = recall_v[1]
                     torch.save(model, model_directory+"/model")
                     save.save_experiment_result(result_directory,[recall_t,precision_t,hit_t],k_list,e+1)
-                    ingoing,outgoing = model.topk_intersection()
+                    # ingoing,outgoing = model.topk_intersection()
 
-                    f1=open(result_directory+"/ingoing_intersection.txt","w")
-                    f1.write("ingoing\n")
-                    for li in ingoing.indices.tolist():
-                        f1.write(str(li)+"\n")
-                    f1.close()
+                    # f1=open(result_directory+"/ingoing_intersection.txt","w")
+                    # f1.write("ingoing\n")
+                    # for li in ingoing.indices.tolist():
+                    #     f1.write(str(li)+"\n")
+                    # f1.close()
 
-                    f1=open(result_directory+"/outgoing_intersection.txt","w")
-                    f1.write("outgoing\n")
-                    for li in outgoing.indices.tolist():
-                        f1.write(str(li)+"\n")
-                    f1.close()
+                    # f1=open(result_directory+"/outgoing_intersection.txt","w")
+                    # f1.write("outgoing\n")
+                    # for li in outgoing.indices.tolist():
+                    #     f1.write(str(li)+"\n")
+                    # f1.close()
 
-                    f1=open(result_directory+"/intersection.txt","w")
-                    f1.write("intersection\n")
-                    sum = 0
-                    res = []
-                    for li in range(len(outgoing.indices.tolist())):
-                        a = outgoing.indices[li].detach().cpu().numpy()
-                        b = ingoing.indices[li].detach().cpu().numpy()
-                        inter = np.intersect1d(a,b)
-                        sum+=len(inter)
-                        res.append(len(inter))
-                        f1.write(str(len(inter))+" "+str(inter)+"\n")
-                    f1.write("sum: "+str(sum)+"\n")
-                    f1.write("avr: "+str(sum/num_items)+"\n")
-                    f1.write("var: "+str(np.var(res))+"\n")
-                    f1.write("std: "+str(np.std(res))+"\n")
-                    f1.close()
+                    # f1=open(result_directory+"/intersection.txt","w")
+                    # f1.write("intersection\n")
+                    # sum = 0
+                    # res = []
+                    # for li in range(len(outgoing.indices.tolist())):
+                    #     a = outgoing.indices[li].detach().cpu().numpy()
+                    #     b = ingoing.indices[li].detach().cpu().numpy()
+                    #     inter = np.intersect1d(a,b)
+                    #     sum+=len(inter)
+                    #     res.append(len(inter))
+                    #     f1.write(str(len(inter))+" "+str(inter)+"\n")
+                    # f1.write("sum: "+str(sum)+"\n")
+                    # f1.write("avr: "+str(sum/num_items)+"\n")
+                    # f1.write("var: "+str(np.var(res))+"\n")
+                    # f1.write("std: "+str(np.std(res))+"\n")
+                    # f1.close()
                 end_time = int(time.time())
                 print("eval time: {} sec".format(end_time-start_time))
+
+def train_only_area_not_inout(train_matrix, test_positive, val_positive, dataset):
+
+    now = datetime.now()
+    model_directory = "./model/"+now.strftime('%Y-%m-%d %H_%M_%S')+"only_area_not_inout"
+    result_directory = "./result/"+now.strftime('%Y-%m-%d %H_%M_%S')+"only_area_not_inout"
+    if not os.path.exists(model_directory):
+        os.makedirs(model_directory)
+    if not os.path.exists(result_directory):
+        os.makedirs(result_directory)
+    max_recall = 0.0
+    k_list=[5, 10, 15, 20, 25, 30]
+
+    args = Args()
+    with open(result_directory+"/setting.txt","w") as setting_f:
+        setting_f.write("lr:{}\n".format(str(args.lr)))
+        setting_f.write("lamda:{}\n".format(str(args.lamda)))
+        setting_f.write("epochs:{}\n".format(str(args.epochs)))
+        setting_f.write("factor_num:{}\n".format(str(args.factor_num)))
+        setting_f.write("hidden_dim:{}\n".format(str(args.hidden_dim)))
+        setting_f.write("num_ng:{}\n".format(str(args.num_ng)))
+        setting_f.write("dataset:{}\n".format(str(dataset.directory_path)))
+
+    num_users = dataset.user_num
+    num_items = dataset.poi_num
+    region_num = datasets.get_region_num(dataset.directory_path)
+    with open(dataset.directory_path+"poi_region_sorted.txt", 'r') as file:
+        # 모든 행을 읽어와서 첫 번째 열만 리스트로 변환
+        businessRegionEmbedList = [int(line.split('\t')[1].strip()) for line in file.readlines()]
+    businessRegionEmbedList = np.array(businessRegionEmbedList)
+    model = only_area_not_inout(num_items, args.factor_num,args.hidden_dim,0.5,region_num).to(DEVICE)
+
+    # 옵티마이저 생성 (adagrad 사용)
+    optimizer = torch.optim.Adagrad(model.parameters(), lr=args.lr, weight_decay=args.lamda)
+    # optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.lamda)
+    for e in range(args.epochs):
+        model.train()
+        train_loss = 0.0
+        start_time = int(time.time())
+
+        idx = list(range(num_users))
+        random.shuffle(idx)
+        for buid in idx:
+            optimizer.zero_grad() # 그래디언트 초기화
+            user_history , train_data, train_label, user_history_region, train_data_region = get_NAIS_batch_region(train_matrix, num_items, buid, args.num_ng, businessRegionEmbedList)
+            
+            prediction = model(user_history, train_data, dataset.nearPOI, train_data_region)
+            #if buid == 0:
+            #    print(f"prediction : {prediction.shape}, {prediction}")
+            loss = model.loss_func(prediction,train_label)
+            train_loss += loss.item()
+            loss.backward() # 역전파 및 그래디언트 계산
+            optimizer.step() # 옵티마이저 업데이트
+        end_time = int(time.time())
+        print("Train Epoch: {}; time: {} sec; loss: {:.4f}".format(e+1, end_time-start_time,train_loss))
+        if (e+1)%5 == 0:
+            model.eval() # 모델을 평가 모드로 설정
+            with torch.no_grad():
+                start_time = int(time.time())
+                precision_v, recall_v, hit_v, precision_t, recall_t, hit_t = val.new4_validation(model,args,num_users,test_positive,val_positive,train_matrix,businessRegionEmbedList,k_list,dataset.nearPOI)
+                
+                if(max_recall < recall_v[1]):
+                    max_recall = recall_v[1]
+                    torch.save(model, model_directory+"/model")
+                    save.save_experiment_result(result_directory,[recall_t,precision_t,hit_t],k_list,e+1)
+                    # ingoing,outgoing = model.topk_intersection()
+
+                    # f1=open(result_directory+"/ingoing_intersection.txt","w")
+                    # f1.write("ingoing\n")
+                    # for li in ingoing.indices.tolist():
+                    #     f1.write(str(li)+"\n")
+                    # f1.close()
+
+                    # f1=open(result_directory+"/outgoing_intersection.txt","w")
+                    # f1.write("outgoing\n")
+                    # for li in outgoing.indices.tolist():
+                    #     f1.write(str(li)+"\n")
+                    # f1.close()
+
+                    # f1=open(result_directory+"/intersection.txt","w")
+                    # f1.write("intersection\n")
+                    # sum = 0
+                    # res = []
+                    # for li in range(len(outgoing.indices.tolist())):
+                    #     a = outgoing.indices[li].detach().cpu().numpy()
+                    #     b = ingoing.indices[li].detach().cpu().numpy()
+                    #     inter = np.intersect1d(a,b)
+                    #     sum+=len(inter)
+                    #     res.append(len(inter))
+                    #     f1.write(str(len(inter))+" "+str(inter)+"\n")
+                    # f1.write("sum: "+str(sum)+"\n")
+                    # f1.write("avr: "+str(sum/num_items)+"\n")
+                    # f1.write("var: "+str(np.var(res))+"\n")
+                    # f1.write("std: "+str(np.std(res))+"\n")
+                    # f1.close()
+                end_time = int(time.time())
+                print("eval time: {} sec".format(end_time-start_time))
+
 
 
 if __name__ == '__main__':
@@ -1022,6 +1314,28 @@ if __name__ == '__main__':
     train_matrix, test_positive, val_positive, place_coords = dataset_.generate_data(0)
     pickle_save((train_matrix, test_positive, val_positive, place_coords,dataset_),"dataset_Tokyo.pkl")
     train_matrix, test_positive, val_positive, place_coords, dataset_ = pickle_load("dataset_Tokyo.pkl")
+
+    nearPOI_dist = []
+    nearPOI_min = []
+    nearPOI_max = []
+    dist_sum = 0.0
+    for i in range(len(dataset_.dist_matrix)):
+        nearPOI_dist.append((np.sort(dataset_.dist_matrix[i,dataset_.nearPOI[i]])*100).astype(int))
+        nearPOI_min.append(nearPOI_dist[i][0])
+        nearPOI_max.append(nearPOI_dist[i][49])
+        dist_sum += sum(nearPOI_dist[i])
+
+    d_max = 1000
+    dist_count = np.zeros(1000)
+    for i in range(len(nearPOI_dist)):
+        for j in range(50):
+            dist_count[nearPOI_dist[i][j]] += 1
+    print(dist_count)
+    # print(dist_sum)
+    # print(dist_sum/50/len(dataset_.dist_matrix))
+    # print(np.var(nearPOI_dist))
+    # print(np.std(nearPOI_dist))
+    # print(nearPOI_dist)
     print("train data generated")
     # datasets.get_region(place_coords,300,dataset_.directory_path)
     # datasets.get_region_num(dataset_.directory_path)
@@ -1031,8 +1345,8 @@ if __name__ == '__main__':
     
     print("train start")
     
-    train_all_in_out(train_matrix, test_positive, val_positive, dataset_)
-
+    # train_only_area_not_inout(train_matrix, test_positive, val_positive, dataset_)
+    # train_NAIS_new4(train_matrix, test_positive, val_positive, dataset_)
     # torch.cuda.memory._dump_snapshot("my_snapshot.pickle")
 
     G = PowerLaw()
@@ -1049,7 +1363,8 @@ if __name__ == '__main__':
     G.fit_distance_distribution(train_matrix, np.array(place_coords))
     print("train start")
     
-    train_all_in_out(train_matrix, test_positive, val_positive, dataset_)
+    # train_only_area_not_inout(train_matrix, test_positive, val_positive, dataset_)
+    # train_NAIS_new4(train_matrix, test_positive, val_positive, dataset_)
 
     G = PowerLaw()
     print("data loading")
@@ -1065,4 +1380,5 @@ if __name__ == '__main__':
     G.fit_distance_distribution(train_matrix, np.array(place_coords))
     print("train start")
     
-    train_all_in_out(train_matrix, test_positive, val_positive, dataset_)
+    # train_only_area_not_inout(train_matrix, test_positive, val_positive, dataset_)
+    # train_NAIS_new4(train_matrix, test_positive, val_positive, dataset_)
